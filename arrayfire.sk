@@ -1,0 +1,73 @@
+module ArrayFire;
+
+@cpp_extern
+native class Array {
+  fun -(lhs: Array): Array {
+    minus_aa(this, lhs)
+  }
+
+  fun +(lhs: Array): Array {
+    plus_aa(this, lhs)
+  }
+
+  fun /(lhs: Array): Array {
+    div_aa(this, lhs)
+  }
+
+  fun *(lhs: Array): Array {
+    mult_aa(this, lhs)
+  }
+}
+
+@cpp_extern
+native fun allTrue(Array): Bool;
+
+@cpp_extern
+native fun abs(Array): Array;
+
+@cpp_extern
+native fun mult_aa(Array, Array): Array;
+
+@cpp_extern
+native fun div_aa(Array, Array): Array;
+
+@cpp_extern
+native fun div_fa(Float, Array): Array;
+
+@cpp_extern
+native fun mult_ia(Int, Array): Array;
+
+@cpp_extern
+native fun mult_fa(Float, Array): Array;
+
+@cpp_extern
+native fun plus_aa(Array, Array): Array;
+
+@cpp_extern
+native fun plus_fa(Float, Array): Array;
+
+@cpp_extern
+native fun minus_aa(Array, Array): Array;
+
+@cpp_extern
+native fun minus_fa(Float, Array): Array;
+
+@cpp_extern
+native fun lt_av(Array, Float): Array;
+
+@cpp_extern
+native fun constant(Float, Int): Array;
+
+@cpp_extern
+native fun constant_one(Array): Array;
+
+@cpp_extern
+native fun print(Array): void;
+
+untracked @cpp_extern
+native fun randu(Int): Array;
+
+@cpp_extern
+native fun eval(Array): void;
+
+module end;

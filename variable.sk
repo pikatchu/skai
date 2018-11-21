@@ -1,0 +1,170 @@
+module alias AF = ArrayFire;
+
+type Dag = Vector<mutable Variable>;
+type GradFunc = (mutable Vector<mutable Variable>, mutable Variable) -> void;
+
+mutable class Variable{
+  data: AF.Array,
+  inputs: mutable Vector<mutable Variable> = mutable Vector[],
+  mutable gradFunc: ?(GradFunc) = None(),
+  grads: mutable Vector<mutable Variable> = mutable Vector[],
+  mutable calcGrad: Bool = false,
+} {
+  type ID = Int;
+
+  static fun new(data: AF.Array, calcGrad: Bool): mutable this {
+    mutable static{data, calcGrad}
+  }
+
+  readonly fun array(): AF.Array {
+    this.data
+  }
+
+  mutable fun addGrad(variable: mutable Variable): void {
+    this.grads.push(variable)
+  }
+
+  mutable fun grad(): mutable Variable {
+    if (!this.calcGrad) {
+      invariant_violation("Gradient calculation disabled.");
+    };
+    if (this.grads.size() == 0) {
+      invariant_violation("Gradient hasn't been calculated yet.");
+    };
+    this.grads[0];
+  }
+
+  mutable fun negate(): mutable Variable {
+    data = AF.minus_fa(0.0, this.array());
+    gradFunc = Some((inputs, gradOutput) -> {
+      inputs[0].addGrad(gradOutput.negate());
+    });
+    inputs = mutable Vector[this];
+    mutable Variable{data, inputs, gradFunc};
+  }
+
+  mutable fun reciprocal(): mutable Variable {
+    data = AF.div_fa(1.0, this.array());
+    gradFunc = Some((inputs, grad_output) -> {
+      res = inputs[0].reciprocal();
+      inputs[0].addGrad(grad_output.negate() * res * res);
+    });
+    inputs = mutable Vector[this];
+    mutable Variable{data, inputs, gradFunc};
+  }
+
+  mutable fun +(rhs: mutable Variable): mutable Variable {
+    data = AF.plus_aa(this.array(), rhs.array());
+    gradFunc = Some((inputs, gradOutput) -> {
+      inputs[0].addGrad(gradOutput);
+      inputs[1].addGrad(gradOutput);
+    });
+    inputs = mutable Vector[this, rhs];
+    mutable Variable{data, inputs, gradFunc};
+  }
+
+  mutable fun -(rhs: mutable Variable): mutable Variable {
+    data = AF.minus_aa(this.array(), rhs.array());
+    gradFunc = Some((inputs, grad_output) -> {
+      inputs[0].addGrad(grad_output);
+      inputs[1].addGrad(grad_output.negate());
+    });
+    inputs = mutable Vector[this, rhs];
+    mutable Variable{data, inputs, gradFunc};
+  }
+
+  mutable fun *(rhs: mutable Variable): mutable Variable {
+    data = AF.mult_aa(this.array(), rhs.array());
+    gradFunc = Some((inputs, grad_output) -> {
+      inputs[0].addGrad(grad_output * inputs[1]);
+      inputs[1].addGrad(grad_output * inputs[0]);
+    });
+    inputs = mutable Vector[this, rhs];
+    mutable Variable{data, inputs, gradFunc};
+  }
+
+  mutable fun /(rhs: mutable Variable): mutable Variable {
+    data = this.array() / rhs.array();
+    gradFunc = Some((inputs, grad_output) -> {
+      inputs_1_rec = inputs[1].reciprocal();
+      grad_input_0 = grad_output * inputs_1_rec;
+      inputs[0].addGrad(grad_input_0);
+      inputs[1].addGrad(grad_input_0 * inputs[0].negate() * inputs_1_rec);
+    });
+    inputs = mutable Vector[this, rhs];
+    mutable Variable{data, inputs, gradFunc};
+  }
+
+  mutable fun setCalcGrad(calcGrad: Bool): void {
+    this.!calcGrad = calcGrad;
+    if (!calcGrad) {
+      this.!gradFunc = None();
+      this.inputs.clear();
+      this.grads.clear();
+    }
+  }
+
+  mutable fun evalGrad(retainGradGraph: Bool): void {
+    // Flag asking not to calculate gradients
+    if (!this.calcGrad) return void;
+
+    // Best not to evaluate the JIT immediately if theres only a single gradient
+    grad = this.grads[0];
+    if (this.grads.size() > 1) {
+      for (i in Range(1, this.grads.size())) {
+        !grad = grad + this.grads[i];
+      };
+      AF.eval(grad.array());
+      this.grads.resize(1, grad);
+    };
+
+    grad.setCalcGrad(retainGradGraph);
+    this.grads![0] = grad;
+  }
+
+  mutable fun calcGradInputs(retainGradGraph: Bool): void {
+    this.evalGrad(retainGradGraph);
+    this.gradFunc match {
+    | None() -> void
+    | Some(gradFun) -> gradFun(this.inputs, this.grads[0])
+    }
+  }
+
+  mutable fun backward(
+    grad: mutable Variable = mutable Variable{
+      data => AF.constant_one(this.array()),
+      calcGrad => false,
+    },
+    retainGradGraph: Bool = false,
+  ): void {
+    this.addGrad(grad);
+    dag = Variable::build(this);
+    for (iter in dag) {
+      iter.calcGradInputs(retainGradGraph);
+    }
+  }
+
+  static fun build(var: mutable Variable): mutable Dag {
+    cache = Set<Variable::ID>::mcreate();
+    dag = mutable Vector[];
+    Variable::buildSubGraph(cache, dag, var);
+    dag
+  }
+
+  static fun buildSubGraph(
+    cache: mutable Set<Variable::ID>,
+    dag: mutable Dag,
+    var: mutable Variable,
+  ): void {
+    dag.push(var);
+    /*    id = var.id();
+        if (cache.find(id) != cache.end()) {
+          return void;
+        };
+    */
+    for (input in var.inputs) {
+      Variable::buildSubGraph(cache, dag, input);
+    };
+    //    cache![id] = true;
+  }
+}
