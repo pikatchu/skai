@@ -1,0 +1,7 @@
+untracked fun main(): void {
+  x = Tensor.Input("x");
+  y = x * x * Tensor.Int(2);
+  grads = y.backward(Tensor.Constant(1.0, 5));
+  value = grads["x"].eval(Map["x" => ArrayFire.randu(5)]);
+  ArrayFire.print(value)
+}

@@ -112,6 +112,17 @@ extern "C" {
     return skip::Finalized<af::array>::createNew(skip::Obstack::cur(), arr);
   }
 
+  skip::RObj* SKIP_ArrayFire_getDims(skip::RObj* obj) {
+    auto internal = static_cast<skip::Finalized<af::array>*>(obj)->m_cppClass;
+    auto dims = internal.dims();
+    return skip::Finalized<af::array>::createNew(skip::Obstack::cur(), dims);
+  }
+
+  skip::RObj* SKIP_ArrayFire_getType(skip::RObj* obj) {
+    auto internal = static_cast<skip::Finalized<af::array>*>(obj)->m_cppClass;
+    auto type = internal.type();
+    return skip::Finalized<af::array>::createNew(skip::Obstack::cur(), type);
+  }
 
   skip::RObj* SKIP_ArrayFire_constant_one(skip::RObj* obj) {
     auto internal = static_cast<skip::Finalized<af::array>*>(obj);

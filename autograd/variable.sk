@@ -196,3 +196,97 @@ mutable class Variable{
     //    cache![id] = true;
   }
 }
+
+module TestVariable;
+fun verify(v: AF.Array): void {
+  res = AF.allTrue(AF.lt_av(AF.abs(v), 1E-5));
+  if (res) print_string("PASSED") else print_string("FAILED");
+}
+
+untracked fun test_multiply(): void {
+  x = Variable::new(AF.randu(5), true);
+  y = x * x;
+  dy = Variable::new(AF.constant(1.0, 5), false);
+  y.backward(dy);
+  dx = x.grad();
+  arr = dx.array() - AF.mult_ia(2, x.array());
+  verify(arr);
+}
+
+untracked fun test_multiply_add(): void {
+  x = Variable::new(AF.randu(5), true);
+  y = Variable::new(AF.randu(5), true);
+  z = x * x + x * y + y * y;
+  dz = Variable::new(AF.constant(1.0, 5), false);
+  z.backward(dz);
+  dx = x.grad();
+  dy = y.grad();
+  verify(dx.array() - AF.mult_ia(2, x.array()) - y.array());
+  verify(dy.array() - AF.mult_ia(2, y.array()) - x.array());
+}
+
+untracked fun test_no_calc_grad(): void {
+  x = Variable::new(AF.randu(5), false);
+  y = Variable::new(AF.randu(5), true);
+  z = x * x + x * y + y * y;
+  dz = Variable::new(AF.constant(1.0, 5), false);
+  z.backward(dz);
+  dy = y.grad();
+  verify(dy.array() - AF.mult_ia(2, y.array()) - x.array());
+  try {
+    _dx = x.grad();
+  } catch {
+  | _ -> return void
+  };
+  invariant_violation("No Gradient check Failed\n");
+}
+
+untracked fun test_multiply_sub(): void {
+  x = Variable::new(AF.randu(5), true);
+  y = Variable::new(AF.randu(5), true);
+  z = x * x - x * y;
+  dz = Variable::new(AF.constant(1.0, 5), false);
+  z.backward(dz);
+  dx = x.grad();
+  dy = y.grad();
+  verify(dx.array() - (AF.mult_ia(2, x.array()) - y.array()));
+  verify(dy.array() - (-x.array()));
+}
+
+untracked fun test_divide_add(): void {
+  x = Variable::new(AF.randu(5), true);
+  y = Variable::new(AF.randu(5), true);
+  z = x + x / y + y;
+  dz = Variable::new(AF.constant(1.0, 5), false);
+  z.backward(dz);
+  dx = x.grad();
+  dy = y.grad();
+  verify(dx.array() - (AF.plus_fa(1.0, AF.div_fa(1.0, y.array()))));
+  verify(
+    dy.array() - (AF.minus_fa(1.0, (x.array() / (y.array() * y.array())))),
+  );
+}
+
+untracked fun test_multiply_add_scalar(): void {
+  x = Variable::new(AF.randu(5), true);
+  y = Variable::new(AF.randu(5), true);
+  z = IMat(2) * x + x * y + y;
+  dz = Variable::new(AF.constant(1.0, 5), false);
+  z.backward(dz);
+  dx = x.grad();
+  dy = y.grad();
+  verify(dx.array() - (AF.plus_fa(2.0, y.array())));
+  verify(dy.array() - (AF.plus_fa(1.0, x.array())));
+}
+
+untracked fun testAll(): void {
+  test_multiply();
+  test_multiply();
+  test_multiply_add();
+  test_no_calc_grad();
+  test_multiply_sub();
+  test_divide_add();
+  test_multiply_add_scalar();
+}
+
+module end;

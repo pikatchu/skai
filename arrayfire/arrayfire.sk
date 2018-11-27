@@ -1,6 +1,12 @@
 module ArrayFire;
 
 @cpp_extern
+native class Dims
+
+@cpp_extern
+native class Type
+
+@cpp_extern
 native class Array {
   fun -(lhs: Array): Array {
     minus_aa(this, lhs)
@@ -22,6 +28,12 @@ native class Array {
     negate(this)
   }
 }
+
+@cpp_extern
+native fun getType(Array): Type;
+
+@cpp_extern
+native fun getDims(Array): Dims;
 
 @cpp_extern
 native fun allTrue(Array): Bool;
