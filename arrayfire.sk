@@ -17,6 +17,10 @@ native class Array {
   fun *(lhs: Array): Array {
     mult_aa(this, lhs)
   }
+
+  fun negate(): Array {
+    negate(this)
+  }
 }
 
 @cpp_extern
@@ -53,10 +57,19 @@ native fun minus_aa(Array, Array): Array;
 native fun minus_fa(Float, Array): Array;
 
 @cpp_extern
+native fun negate(Array): Array;
+
+@cpp_extern
 native fun lt_av(Array, Float): Array;
 
 @cpp_extern
 native fun constant(Float, Int): Array;
+
+@cpp_extern
+native fun constant_of_int(Int, Array): Array;
+
+@cpp_extern
+native fun constant_of_float(Float, Array): Array;
 
 @cpp_extern
 native fun constant_one(Array): Array;

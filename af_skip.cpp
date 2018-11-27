@@ -82,6 +82,12 @@ extern "C" {
     return skip::Finalized<af::array>::createNew(skip::Obstack::cur(), arr);
   }
 
+  skip::RObj* SKIP_ArrayFire_negate(skip::RObj* obj) {
+    auto internal = static_cast<skip::Finalized<af::array>*>(obj);
+    auto arr = - internal->m_cppClass;
+    return skip::Finalized<af::array>::createNew(skip::Obstack::cur(), arr);
+  }
+
   skip::RObj* SKIP_ArrayFire_div_aa(skip::RObj* obj1, skip::RObj* obj2) {
     auto internal1 = static_cast<skip::Finalized<af::array>*>(obj1);
     auto internal2 = static_cast<skip::Finalized<af::array>*>(obj2);
@@ -98,6 +104,12 @@ extern "C" {
   bool SKIP_ArrayFire_allTrue(skip::RObj* obj) {
     auto internal = static_cast<skip::Finalized<af::array>*>(obj);
     return af::allTrue<bool>(internal->m_cppClass);
+  }
+
+  skip::RObj* SKIP_ArrayFire_constant_of_int(long value, skip::RObj* obj) {
+    auto internal = static_cast<skip::Finalized<af::array>*>(obj)->m_cppClass;
+    auto arr = af::constant(value, internal.dims(), internal.type());
+    return skip::Finalized<af::array>::createNew(skip::Obstack::cur(), arr);
   }
 
 

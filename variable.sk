@@ -3,6 +3,34 @@ module alias AF = ArrayFire;
 type Dag = Vector<mutable Variable>;
 type GradFunc = (mutable Vector<mutable Variable>, mutable Variable) -> void;
 
+class IMat(value: Int) {
+  fun *(rhs: mutable Variable): mutable Variable {
+    cst = AF.constant_of_int(this.value, rhs.array());
+    lhs = Variable::new(cst, false);
+    lhs * rhs
+  }
+
+  fun +(rhs: mutable Variable): mutable Variable {
+    cst = AF.constant_of_int(this.value, rhs.array());
+    lhs = Variable::new(cst, false);
+    lhs + rhs
+  }
+}
+
+class FMat(value: Float) {
+  fun *(rhs: mutable Variable): mutable Variable {
+    cst = AF.constant_of_float(this.value, rhs.array());
+    lhs = Variable::new(cst, false);
+    lhs * rhs
+  }
+
+  fun +(rhs: mutable Variable): mutable Variable {
+    cst = AF.constant_of_float(this.value, rhs.array());
+    lhs = Variable::new(cst, false);
+    lhs + rhs
+  }
+}
+
 mutable class Variable{
   data: AF.Array,
   inputs: mutable Vector<mutable Variable> = mutable Vector[],

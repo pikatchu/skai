@@ -48,9 +48,7 @@ untracked fun test_no_calc_grad(): void {
   invariant_violation("No Gradient check Failed\n");
 }
 
-/*
-
-fun test_multiply_sub(): void {
+untracked fun test_multiply_sub(): void {
   x = Variable::new(AF.randu(5), true);
   y = Variable::new(AF.randu(5), true);
   z = x * x - x * y;
@@ -61,7 +59,6 @@ fun test_multiply_sub(): void {
   verify(dx.array() - (AF.mult_ia(2, x.array()) - y.array()));
   verify(dy.array() - (-x.array()));
 }
-*/
 
 untracked fun test_divide_add(): void {
   x = Variable::new(AF.randu(5), true);
@@ -72,28 +69,28 @@ untracked fun test_divide_add(): void {
   dx = x.grad();
   dy = y.grad();
   verify(dx.array() - (AF.plus_fa(1.0, AF.div_fa(1.0, y.array()))));
-  verify(dy.array() - (AF.minus_fa(1.0, x.array() / (y.array() * y.array()))));
+  verify(
+    dy.array() - (AF.minus_fa(1.0, (x.array() / (y.array() * y.array())))),
+  );
 }
 
-/*
-fun test_multiply_add_scalar(): void {
+untracked fun test_multiply_add_scalar(): void {
   x = Variable::new(AF.randu(5), true);
   y = Variable::new(AF.randu(5), true);
-  z = 2 * x + x * y + y;
+  z = IMat(2) * x + x * y + y;
   dz = Variable::new(AF.constant(1.0, 5), false);
   z.backward(dz);
   dx = x.grad();
   dy = y.grad();
-  verify(dx.array() - (2.0 + y.array()));
-  verify(dy.array() - (1.0 + x.array()));
+  verify(dx.array() - (AF.plus_fa(2.0, y.array())));
+  verify(dy.array() - (AF.plus_fa(1.0, x.array())));
 }
-*/
 
 untracked fun main(): void {
-  //  test_multiply();
-  //  test_multipl_add();
-  //  test_no_calc_grad();
-  // test_multiply_sub();
+  test_multiply();
+  test_multipl_add();
+  test_no_calc_grad();
+  test_multiply_sub();
   test_divide_add();
-  // test_multiply_add_scalar();
+  test_multiply_add_scalar();
 }
