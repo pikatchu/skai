@@ -20,6 +20,23 @@ class Int(value: .Int) extends Tensor {
   fun +(rhs: Tensor): Tensor {
     ConstantOfInt(this.value, rhs) + rhs
   }
+
+  fun -(rhs: Tensor): Tensor {
+    ConstantOfInt(this.value, rhs) - rhs
+  }
+
+  fun /(rhs: Tensor): Tensor {
+    ConstantOfInt(this.value, rhs) / rhs
+  }
+
+  fun negate(): Tensor {
+    !this.value = -this.value;
+    this
+  }
+
+  fun reciprocal(): Tensor {
+    invariant_violation("Reciprocal on Int not supported")
+  }
 }
 
 base class .Tensor {
