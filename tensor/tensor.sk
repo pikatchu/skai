@@ -47,6 +47,7 @@ base class .Tensor {
   | Operation(OperationKind, Tensor, Tensor)
   | Negate(Tensor)
   | Reciprocal(Tensor)
+  | Bind(String, Tensor)
 
   overridable fun *(rhs: Tensor): Tensor {
     rhs match {
@@ -84,6 +85,14 @@ base class .Tensor {
     Reciprocal(this)
   }
 
+  static fun addGradient(
+    name: String,
+    gradient: Tensor,
+    acc: mutable Map<String, Tensor>,
+  ): void {
+    acc![name] = if (acc.containsKey(name)) acc[name] + gradient else gradient
+  }
+
   protected fun buildGradients(
     gradient: Tensor,
     acc: mutable Map<String, Tensor>,
@@ -92,8 +101,10 @@ base class .Tensor {
   | Constant _
   | ConstantOfInt _ ->
     void
-  | Input(name) ->
-    acc![name] = if (acc.containsKey(name)) acc[name] + gradient else gradient
+  | Input(name) -> static::addGradient(name, gradient, acc)
+  | Bind(name, tensor) ->
+    static::addGradient(name, gradient, acc);
+    tensor.buildGradients(gradient, acc)
   | Operation(operator, lhs, rhs) ->
     operator match {
     | Multiply() ->
@@ -131,6 +142,7 @@ base class .Tensor {
       } else {
         env[n]
       }
+    | Bind(_, tensor) -> await tensor.asyncEval(env)
     | ConstantOfInt(value, tensor) ->
       AF.constant_of_int(value, await tensor.asyncEval(env))
     | Constant(value, dims) -> AF.constant(value, dims)
@@ -223,6 +235,19 @@ fun test_multiply_add_scalar(env: Tensor.Env): void {
   verify(dy.eval(env) - (AF.plus_fa(1.0, x.eval(env))));
 }
 
+fun test_bind(env: Tensor.Env): void {
+  x = Tensor.Input("x");
+  y = Tensor.Input("y");
+  z = x * Tensor.Int(2) + Tensor.Bind("myVar", x * y) + y;
+  dz = Tensor.Constant(1.0, 5);
+  grads = z.backward(dz);
+  dx = grads["x"];
+  dy = grads["y"];
+  AF.print(grads["myVar"].eval(env));
+  verify(dx.eval(env) - (AF.plus_fa(2.0, y.eval(env))));
+  verify(dy.eval(env) - (AF.plus_fa(1.0, x.eval(env))));
+}
+
 untracked fun testAll(): void {
   env = Map["x" => AF.randu(5), "y" => AF.randu(5)];
   test_multiply(env);
@@ -230,6 +255,7 @@ untracked fun testAll(): void {
   test_multiply_sub(env);
   test_divide_add(env);
   test_multiply_add_scalar(env);
+  test_bind(env);
 }
 
 module end;
