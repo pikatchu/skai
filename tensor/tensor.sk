@@ -133,7 +133,8 @@ base class .Tensor {
     freeze(acc)
   }
 
-  async fun asyncEval(env: Env): ^AF.Array {
+  @gc
+  memoized async fun asyncEval(env: Env): ^AF.Array {
     this match {
     | Int _ -> invariant_violation("Bad usage of Tensor.Int")
     | Input(n) ->
@@ -163,6 +164,10 @@ base class .Tensor {
   fun eval(env: Env): AF.Array {
     awaitSynchronously(this.asyncEval(env))
   }
+}
+
+fun dummySigmoid(input: Tensor): Tensor {
+  input
 }
 
 module end;
