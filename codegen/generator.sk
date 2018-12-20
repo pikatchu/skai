@@ -1,0 +1,328 @@
+module Ast;
+
+fun vec<T: Show>(v: Vector<T>): String {
+  v.reduce((x, y) -> x + y.toString(), "")
+}
+
+fun vecList<T: Show>(v: Vector<T>): String {
+  if (v.size() == 0) "" else {
+    v
+      .slice(0, v.size() - 1)
+      .reduce((x, y) -> x + ", " + y.toString(), v[v.size() - 1].toString())
+  }
+}
+
+class Type(name: String, branches: Vector<Branch>) uses Show {
+  fun toString(): String {
+    `base class ${this.name} {\n  children =\n` + vec(this.branches) + "}\n\n"
+  }
+}
+class Branch(name: String, fields: Vector<String>) uses Show {
+  fun toString(): String {
+    `  | ${this.name}(` + vecList(this.fields) + ")\n"
+  }
+}
+
+class Program(types: Vector<Type>, funs: Vector<Fun>) uses Show {
+  fun toString(): String {
+    vec(this.types) + vec(this.funs)
+  }
+}
+
+class Fun(
+  name: String,
+  paramType: String,
+  retType: String,
+  body: Body,
+) uses Show {
+  fun toString(): String {
+    `fun ${this.name}(param: ${this.paramType}): ${this.retType} {\n` +
+      this.body +
+      "}\n\n"
+  }
+}
+base class Body() uses Show {
+  children =
+  | BMatch(String, Pattern, Seq)
+  | BExpr(Seq)
+
+  fun toString(): String
+  | BMatch _ -> invariant_violation("TODO match show")
+  | BExpr(seq) ->
+    vec(
+      seq
+        .map(x -> {
+          (name, e) = x;
+          if (name == "ret") {
+            "  " + e.toString() + "\n"
+          } else {
+            "  " + name + " = " + e + ";\n"
+          }
+        })
+        .collect(Vector),
+    )
+}
+
+type Seq = List<(String, Expr)>;
+class Pattern(name: String, fields: List<String>)
+
+base class Expr uses Show {
+  children =
+  | Construct(name: String, fields: Vector<String>)
+  | Call(String, String)
+
+  fun toString(): String
+  | Construct(name, fields) -> name + "(" + vecList(fields) + ")"
+  | Call(name, args) -> name + "(" + args + ")"
+}
+
+module end;
+
+module CodeGen;
+
+class Config{
+  maxFuns: Int = 5,
+  maxTypes: Int = 5,
+  maxBranches: Int = 6,
+  maxWidth: Int = 5,
+  maxSeqSize: Int = 10,
+}
+
+private mutable class Env{
+  typeIds: mutable Map<String, Int> = mutable Map[],
+  types: mutable Vector<Ast.Type> = mutable Vector[],
+  branchTypes: mutable Map<String, Int> = mutable Map[],
+  branches: mutable Map<String, Ast.Branch> = mutable Map[],
+  funs: mutable Vector<Ast.Fun> = mutable Vector[],
+  funsReturning: mutable Map<String, mutable Vector<Ast.Fun>> = mutable Map[],
+}
+
+mutable class .CodeGen{
+  config: Config = Config{},
+  randomGen: mutable Random = Random::mcreate(23),
+  env: mutable Env = mutable Env{},
+  mutable count: Int = 0,
+} {
+  mutable fun random(n: Int): Int {
+    if (n <= 0) 0 else this.randomGen.random(0, n)
+  }
+
+  mutable fun genSym(): String {
+    this.!count = this.count + 1;
+    "tmp_" + this.count
+  }
+
+  mutable fun buildProgram(): Ast.Program {
+    this.buildTypes();
+    Ast.Program(freeze(this.env.types), this.buildFuns())
+  }
+
+  mutable fun buildTypes(): void {
+    nbrTypes = 1 + this.random(this.config.maxTypes - 1);
+    for (typeNbr in Range(0, nbrTypes)) {
+      this.buildType(typeNbr)
+    };
+  }
+
+  mutable fun buildType(typeNbr: Int): void {
+    typeName = `Tree_${typeNbr}`;
+    nbrCols = this.random(this.config.maxBranches);
+    empty = Ast.Branch(`Empty_${typeNbr}`, Vector[]);
+    branches = mutable Vector[empty];
+    this.addBranch(typeNbr, empty);
+    for (branchNbr in Range(0, nbrCols - 1)) {
+      branches.push(this.buildBranch(typeNbr, branchNbr))
+    };
+    this.env.typeIds![typeName] = this.env.types.size();
+    this.env.types.push(Ast.Type(typeName, freeze(branches)));
+  }
+
+  mutable fun addBranch(typeNbr: Int, branch: Ast.Branch): void {
+    this.env.branchTypes![branch.name] = typeNbr;
+    this.env.branches![branch.name] = branch;
+  }
+
+  mutable fun buildBranch(typeNbr: Int, branchNbr: Int): Ast.Branch {
+    branchName = `Branch_${typeNbr}_${branchNbr}`;
+    nbrFields = this.random(this.config.maxWidth);
+    fields = mutable Vector[];
+    for (_fieldNbr in Range(0, nbrFields)) {
+      fields.push(this.buildField(typeNbr))
+    };
+    branch = Ast.Branch(branchName, freeze(fields));
+    this.addBranch(typeNbr, branch);
+    branch
+  }
+
+  mutable fun buildField(typeNbr: Int): String {
+    this.random(2) match {
+    | 0 -> "Tree_" + typeNbr
+    | 1 -> "Tree_" + this.random(typeNbr)
+    | _ -> invariant_violation("Should not happen")
+    }
+  }
+
+  mutable fun buildFuns(): Vector<Ast.Fun> {
+    funs = mutable Vector[];
+    nbrFuns = 1 + this.random(this.config.maxFuns);
+    for (funNbr in Range(0, nbrFuns)) {
+      funs.push(this.buildFun(funNbr));
+    };
+    freeze(funs)
+  }
+
+  mutable fun buildFun(funNbr: Int): Ast.Fun {
+    funName = `fun_${funNbr}`;
+    paramTypeId = this.random(this.env.types.size());
+    paramTypeName = this.env.types[paramTypeId].name;
+    retTypeId = this.random(this.env.types.size());
+    retTypeName = this.env.types[retTypeId].name;
+    body = this.buildFunBody(paramTypeName, retTypeName);
+    fun_ = Ast.Fun(funName, paramTypeName, retTypeName, body);
+    if (!this.env.funsReturning.containsKey(retTypeName)) {
+      this.env.funsReturning![retTypeName] = mutable Vector[];
+    };
+    this.env.funsReturning[retTypeName].push(fun_);
+    fun_
+  }
+
+  mutable fun buildFunBody(
+    paramTypeName: String,
+    retTypeName: String,
+  ): Ast.Body {
+    1 match {
+    | 0 -> invariant_violation("TODO")
+    | 1 ->
+      Ast.BExpr(
+        this.buildSeq(
+          this.seqSize(),
+          paramTypeName,
+          "ret",
+          retTypeName,
+        ).reversed(),
+      )
+    | _ -> invariant_violation("Should not happen")
+    }
+  }
+
+  mutable fun seqSize(): Int {
+    this.random(this.config.maxSeqSize);
+  }
+
+  mutable fun buildSeq(
+    size: Int,
+    paramTypeName: String,
+    localName: String,
+    typeName: String,
+  ): Ast.Seq {
+    isConstr = this.random(2) == 0;
+    if (
+      size == 0 ||
+      isConstr ||
+      !this.env.funsReturning.containsKey(typeName)
+    ) {
+      typeId = this.env.typeIds[typeName];
+      ty = this.env.types[typeId];
+      branchNbr = if (size == 0) 0 else this.random(ty.branches.size());
+      branch = ty.branches[branchNbr];
+      (seq, cstr) = this.buildConstr(size, List[], paramTypeName, branch.name);
+      List.Cons((localName, cstr), seq)
+    } else {
+      funReturning = this.env.funsReturning[typeName];
+      funIdx = this.random(funReturning.size());
+      fun_ = funReturning[funIdx];
+      (argName, seq) = if (
+        fun_.paramType == paramTypeName &&
+        this.random(2) == 0
+      ) {
+        ("param", List[])
+      } else {
+        argName = this.genSym();
+        seq = this.buildSeq(size - 1, paramTypeName, argName, fun_.paramType);
+        (argName, seq)
+      };
+      List.Cons((localName, Ast.Call(fun_.name, argName)), seq)
+    }
+  }
+
+  mutable fun buildConstr(
+    seqSize: Int,
+    seq: Ast.Seq,
+    paramTypeName: String,
+    cstrName: String,
+  ): (Ast.Seq, Ast.Construct) {
+    branch = this.env.branches[cstrName];
+    fields = branch.fields.map(typeName -> {
+      localName = this.genSym();
+      newSeq = this.buildSeq(seqSize - 1, paramTypeName, localName, typeName);
+      (newSeq, localName)
+    });
+    !seq = fields.map(x -> x.i0).reduce((x, y) -> x.concat(y), seq);
+    (seq, Ast.Construct(branch.name, fields.map(x -> x.i1)))
+  }
+}
+
+module end;
+
+module Eval;
+
+class Value(name: String, fields: Vector<String>) uses Show {
+  fun toString(): String {
+    this.name + "(" + Ast.vecList(this.fields) + ")"
+  }
+}
+
+mutable class .Eval(
+  write: String -> void,
+  prog: Ast.Program,
+  funIndex: mutable Map<String, Int> = mutable Map[],
+) {
+  mutable fun go(): void {
+    main = this.prog.funs[this.prog.funs.size() - 1];
+    argType = for (ty in this.prog.types) {
+      if (ty.name == main.paramType) {
+        break ty;
+      }
+    } else {
+      invariant_violation("The type of main could not be found")
+    };
+    for (i in Range(0, this.prog.funs.size())) {
+      this.funIndex![this.prog.funs[i].name] = i;
+    };
+    output = this.fun_(
+      SortedMap[],
+      main,
+      Value(argType.branches[0].name, Vector[]),
+    );
+    this.write(`output = ${output}\n`)
+  }
+
+  mutable fun fun_(
+    env: SortedMap<String, Value>,
+    funAst: Ast.Fun,
+    value: Value,
+  ): Value {
+    !env = env.set("param", value);
+    funAst.body match {
+    | Ast.BMatch _ -> invariant_violation("TODO BMatch")
+    | Ast.BExpr(el) ->
+      el.each(x -> {
+        (localName, rhs) = x;
+        rhsValue = rhs match {
+        | Ast.Construct(name, fieldNames) -> Value(name, fieldNames)
+        | Ast.Call(funName, var) ->
+          this.fun_(env, this.lookupFun(funName), env.get(var))
+        };
+        this.write(`${localName} = ${rhsValue}\n`);
+        !env = env.set(localName, rhsValue)
+      });
+      env.get("ret")
+    }
+  }
+
+  mutable fun lookupFun(name: String): Ast.Fun {
+    this.prog.funs[this.funIndex[name]]
+  }
+}
+
+module end;

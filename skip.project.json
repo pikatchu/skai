@@ -3,7 +3,7 @@
   "programUnits": {
     "a.out": {
       "kind": "Program",
-      "sources": [".", "autograd/.", "tensor/.", "arrayfire/."],
+      "sources": [".", "autograd/.", "tensor/.", "arrayfire/.", "codegen/."],
       "references": [{ "path": "/usr/lib/skip/prelude" }]
     }
   }

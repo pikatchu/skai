@@ -1,7 +1,21 @@
+fun invalid_usage<T>(): T {
+  print_error(`Invalid usage: expected number of programs a parameter`);
+  exit(2)
+}
+
 untracked fun main(): void {
-  x = Tensor.Input("x");
-  y = x * x * Tensor.Int(2);
-  grads = y.backward(Tensor.Constant(1.0, 5));
-  value = grads["x"].eval(Map["x" => ArrayFire.randu(5)]);
-  ArrayFire.print(value)
+  args = arguments();
+  seed = if (args.size() == 0) {
+    invalid_usage()
+  } else {
+    args[0].toIntOption() match {
+    | None() -> invalid_usage()
+    | Some(x) -> x
+    }
+  };
+  codeGen = mutable CodeGen{randomGen => Random::mcreate(seed)};
+  program = codeGen.buildProgram();
+  print_string(program.toString());
+  print_string("------------------ TRACE ------------------");
+  (mutable Eval(print_raw, program)).go();
 }
