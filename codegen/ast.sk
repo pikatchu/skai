@@ -1,0 +1,225 @@
+module alias APPH = AstPrettyPrintHelpers;
+
+/*****************************************************************************/
+/* This module defines the abstract syntax tree of the programs we generate. */
+/*****************************************************************************/
+module Ast;
+
+class Program(types: Vector<Type>, funs: Vector<Fun>, mainInput: String)
+class Type(name: String, branches: Vector<Branch>)
+class Branch(name: String, fields: Vector<String>)
+class Fun(
+  name: String,
+  paramTypes: Vector<String>,
+  retType: String,
+  body: Body,
+)
+
+base class Body() {
+  children =
+  | BMatch(Vector<(Pattern, Seq)>)
+  | BExpr(Seq)
+}
+
+type Seq = List<(String, Expr)>;
+class Pattern(name: String, fields: Vector<String>)
+
+base class Expr {
+  children =
+  | Construct(name: String, fields: Vector<String>)
+  | Call(String, Vector<String>)
+}
+
+module end;
+
+/*****************************************************************************/
+/* Basic helpers to pretty-print vectors. */
+/*****************************************************************************/
+
+module AstPrettyPrintHelpers;
+
+fun vector<T: Show>(v: Vector<T>): String {
+  v.reduce((x, y) -> x + y.toString(), "")
+}
+
+fun vectorList<T: Show>(v: Vector<T>): String {
+  if (v.size() == 0) "" else {
+    v
+      .slice(1, v.size())
+      .reduce((x, y) -> x + ", " + y.toString(), v[0].toString())
+  }
+}
+
+module end;
+
+/*****************************************************************************/
+/* Section implementing the pretty-printing of the Ast. */
+/*****************************************************************************/
+module Ast;
+extension class Type uses Show {
+  fun toString(): String {
+    `base class ${this.name} {\n  children =\n` +
+      APPH.vector(this.branches) +
+      "}\n\n"
+  }
+}
+
+extension class Branch uses Show {
+  fun toString(): String {
+    `  | ${this.name}(` + APPH.vectorList(this.fields) + ")\n"
+  }
+}
+
+extension class Program uses Show {
+  fun toString(): String {
+    APPH.vector(this.types) + APPH.vector(this.funs)
+  }
+}
+
+extension class Fun uses Show {
+  fun paramsToString(): String {
+    res = "";
+    size = this.paramTypes.size();
+    if (size == 0) return "";
+    last = size - 1;
+    for (paramNbr in Range(0, last)) {
+      !res = res + `param${paramNbr}: ${this.paramTypes[paramNbr]}, `
+    };
+    !res = res + `param${last}: ${this.paramTypes[last]}`;
+    res
+  }
+
+  fun toString(): String {
+    `fun ${this.name}(${this.paramsToString()}): ${this.retType} {\n` +
+      this.body +
+      "}\n\n"
+  }
+}
+
+extension base class Body uses Show {
+  fun toString(): String
+  | BMatch(actions) ->
+    "  param0 match {\n" +
+      APPH.vector(
+        actions.map(pat_seq -> {
+          (pat, seq) = pat_seq;
+          seqStr = APPH.vector(
+            seq
+              .map(x -> {
+                (name, e) = x;
+                if (name == "ret") {
+                  "    " + e + "\n"
+                } else {
+                  "    " + name + " = " + e + ";\n"
+                }
+              })
+              .collect(Vector),
+          );
+          "  | " + pat + " =>\n" + seqStr + "\n"
+        }),
+      ) +
+      "  }\n"
+  | BExpr(seq) ->
+    APPH.vector(
+      seq
+        .map(x -> {
+          (name, e) = x;
+          if (name == "ret") {
+            "  " + e + "\n"
+          } else {
+            "  " + name + " = " + e + ";\n"
+          }
+        })
+        .collect(Vector),
+    )
+}
+
+extension class Pattern uses Show {
+  fun toString(): String {
+    this.name + "(" + APPH.vectorList(this.fields) + ")"
+  }
+}
+
+extension base class Expr uses Show {
+  fun toString(): String
+  | Construct(name, fields) -> name + "(" + APPH.vectorList(fields) + ")"
+  | Call(name, args) -> name + "(" + APPH.vector(args) + ")"
+}
+module end;
+
+/*****************************************************************************/
+/* Section implementing the type substitution in an Ast. */
+/*****************************************************************************/
+module Ast;
+
+extension class Type {
+  fun substType(typeName: String): ?this {
+    for (i in Range(0, this.branches.size())) {
+      this.branches[i].substType(typeName) match {
+      | None() -> continue
+      | Some(newBranch) ->
+        newBranches = Vector::mcreateFromItems(this.branches);
+        newBranches![i] = newBranch;
+        break Some(this with {branches => freeze(newBranches)})
+      }
+    } else {
+      None()
+    }
+  }
+}
+
+extension class Branch {
+  fun substType(typeName: String): ?this {
+    for (i in Range(0, this.fields.size())) {
+      if (this.fields[i] == "type") {
+        break {
+          newFields = Vector::mcreateFromItems(this.fields);
+          newFields![i] = typeName;
+          Some(this with {fields => freeze(newFields)})
+        }
+      }
+    } else {
+      None()
+    }
+  }
+}
+
+module end;
+
+/*****************************************************************************/
+/* Section implementing the type renaming of the left over "self" and "type"
+ * patterns.
+ */
+/*****************************************************************************/
+
+module Ast;
+
+extension class Type {
+  fun renameSelfAndType(): this {
+    typeName = this.name;
+    typeNbr = typeName.stripPrefix("Type_");
+    newBranches = mutable Vector[];
+    for (i in Range(0, this.branches.size())) {
+      renamedBranch = this.branches[i].renameSelfAndType(typeName, typeNbr, i);
+      newBranches.push(renamedBranch)
+    };
+    !this.branches = freeze(newBranches);
+    this
+  }
+}
+
+extension class Branch {
+  fun renameSelfAndType(
+    typeName: String,
+    typeNbr: String,
+    branchNbr: Int,
+  ): this {
+    !this.fields = this.fields.map(x -> {
+      if (x == "self") typeName else if (x == "type") "Type_2" else x
+    });
+    !this.name = "C_" + typeNbr + "_" + branchNbr;
+    this
+  }
+}
+
+module end;
