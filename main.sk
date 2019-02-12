@@ -13,9 +13,15 @@ untracked fun main(): void {
     | Some(x) -> x
     }
   };
-  codeGen = mutable CodeGen{randomGen => Random::mcreate(seed)};
-  program = codeGen.buildProgram();
+  typeEnv = (mutable CodeGen.GenTypes{
+    depth => 1,
+    maxWidth => 3,
+    maxHeight => 3,
+    maxTypes => 3,
+  }).genTypes();
+  codeGen = mutable CodeGen{typeEnv, randomGen => Random::mcreate(seed)};
+  program = codeGen.genProgram();
   print_string(program.toString());
   print_string("------------------ TRACE ------------------");
-  (mutable Eval(print_raw, program)).go();
+  Eval::new(print_raw, program).go(22);
 }

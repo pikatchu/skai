@@ -1,0 +1,90 @@
+module Eval;
+
+class Value(name: String, fields: Vector<Value>) uses Show {
+  fun toString(): String {
+    this.name + "(" + AstPrettyPrintHelpers.vectorList(this.fields) + ")"
+  }
+}
+
+type Env = SortedMap<String, Value>;
+
+mutable class .Eval(
+  write: String -> void,
+  types: Map<String, Ast.Type>,
+  funs: Map<String, Ast.Fun>,
+  mutable inputSize: Int = 3,
+) {
+  static fun new(write: String -> void, prog: Ast.Program): mutable this {
+    types = mutable Map[];
+    for (ty in prog.types) {
+      types![ty.name] = ty
+    };
+    funs = mutable Map[];
+    for (fun_ in prog.funs) {
+      funs![fun_.name] = fun_
+    };
+    mutable Eval(write, freeze(types), freeze(funs))
+  }
+
+  mutable fun genInput(tyName: String): Value {
+    ty = this.types[tyName];
+    branch = ty.branches[0];
+    Value(branch.name, branch.fields.map(this.genInput))
+  }
+
+  mutable fun go(inputSize: Int): void {
+    this.!inputSize = inputSize;
+    main = this.funs["fun_0"];
+    output = this.fun_(SortedMap[], main, main.paramTypes.map(this.genInput));
+    this.write(`output = ${output}\n`)
+  }
+
+  mutable fun bind(env: Env, vars: Vector<String>, values: Vector<Value>): Env {
+    invariant(vars.size() == values.size(), "Invalid match");
+    for (i in Range(0, vars.size())) {
+      !env = env.set(vars[i], values[i]);
+    };
+    env
+  }
+
+  mutable fun fun_(
+    env: SortedMap<String, Value>,
+    funAst: Ast.Fun,
+    values: Vector<Value>,
+  ): Value {
+    for (i in Range(0, values.size())) {
+      !env = env.set("param" + i, values[i]);
+    };
+    funAst.body match {
+    | Ast.BMatch(branches) ->
+      // A pattern-match is always on the first parameter
+      param0 = env.get("param0");
+      for (branch in branches) {
+        (pattern, action) = branch;
+        if (pattern.name == param0.name) {
+          !env = this.bind(env, pattern.fields, param0.fields);
+          break this.evalSeq(env, action);
+        }
+      } else {
+        invariant_violation("No match found")
+      }
+    | Ast.BExpr(el) -> this.evalSeq(env, el)
+    }
+  }
+
+  mutable fun evalSeq(env: Env, el: Ast.Seq): Value {
+    el.each(x -> {
+      (localName, rhs) = x;
+      rhsValue = rhs match {
+      | Ast.Construct(name, fieldNames) -> Value(name, fieldNames.map(env.get))
+      | Ast.Call(funName, vars) ->
+        this.fun_(env, this.funs[funName], vars.map(x -> env.get(x)))
+      };
+      this.write(`${localName} = ${rhsValue}\n`);
+      !env = env.set(localName, rhsValue)
+    });
+    env.get("ret")
+  }
+}
+
+module end;
