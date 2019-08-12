@@ -1,0 +1,137 @@
+/******************************************************************************
+ * Class finding the global symbols and the newlines in a file.
+ *****************************************************************************/
+
+module Scade7;
+
+value class Symbol(name: String, pos: Int)
+value class RelativePos(line: Int, col: Int)
+
+fun getNewlines(content: Vector<Char>): Array<Int> {
+  newlines = mutable Vector[];
+  pos = 0;
+  loop {
+    if (pos >= content.size()) return newlines.toArray();
+    content[pos] match {
+    | '\n' ->
+      newlines.push(pos);
+      !pos = pos + 1
+    | _ -> !pos = pos + 1
+    }
+  }
+}
+
+fun getSymbols(chars: Vector<Char>): Array<Symbol> {
+  lexer = Lexer::create(chars);
+  symbols = mutable Vector[];
+  pos = 0;
+  loop {
+    token = lexer.next(pos);
+    !pos = token.posEnd;
+    token.kind match {
+    | TEOF() -> return symbols.toArray()
+    | TWord() if (lexer.matches(token, "function")) ->
+      !token = lexer.next(pos);
+      while (
+        lexer.next(pos).kind match {
+        | TNewline()
+        | TSpace()
+        | TComment() ->
+          true
+        | _ -> false
+        }
+      ) {
+        !pos = token.posEnd;
+        !token = lexer.next(pos)
+      };
+      symbols.push(Symbol(lexer.mkString(token), token.posBegin))
+    | _ -> void
+    }
+  }
+}
+
+class FileInfo{symbols: Array<Symbol>, newlines: Array<Int>} {
+  static fun create(fileContent: String): FileInfo {
+    chars = fileContent.chars();
+    FileInfo{symbols => getSymbols(chars), newlines => getNewlines(chars)}
+  }
+
+  fun getRelativePos(offset: Int, pos: Int): RelativePos {
+    !pos = offset + pos;
+    line = this.getLine(pos, 0, this.newlines.size() - 1);
+    linePos = this.getLinePos(line);
+    RelativePos(line + 2, pos - linePos)
+  }
+
+  private fun getLine(pos: Int, i: Int, j: Int): Int {
+    if (i > j) return j;
+    pivot = (i + j) / 2;
+    pivotPos = this.newlines[pivot];
+    if (pos > pivotPos) {
+      this.getLine(pos, pivot + 1, j)
+    } else if (pos < pivotPos) {
+      this.getLine(pos, i, pivot - 1)
+    } else {
+      pivot
+    };
+  }
+
+  private fun getLinePos(pos: Int): Int {
+    if (pos < 0) 0 else (this.newlines[pos] + 1)
+  }
+}
+
+module end;
+
+module Scade7FileInfoTest;
+
+fun go(): void {
+  rgen = Random::mcreate(23);
+  maxSize = 100;
+  content = mutable Vector<Char>[];
+  line = 1;
+  col = 1;
+  symbolNbr = 0;
+  addChar = c -> {
+    !col = col + 1;
+    content.push(c)
+  };
+  addString = str -> {
+    for (c in str) {
+      addChar(c)
+    }
+  };
+  for (_ in Range(0, rgen.random(0, maxSize))) {
+    rgen.random(0, 7) match {
+    | 0 -> addChar('3')
+    | 1 ->
+      addChar('\n');
+      !line = line + 1;
+      !col = 1
+    | 2 -> addChar(' ')
+    | 3 ->
+      addChar('/');
+      addChar('*');
+      for (_ in Range(0, rgen.random(0, maxSize))) {
+        addChar('0')
+      };
+      addChar('*');
+      addChar('/')
+    | 4 ->
+      addChar('"');
+      for (_ in Range(0, rgen.random(0, maxSize))) {
+        addChar('0')
+      };
+      addChar('"')
+    | 5 -> addChar(';')
+    | _ ->
+      addString("function ");
+      !symbolNbr = symbolNbr + 1;
+      addString("symbol" + symbolNbr);
+      addChar(' ')
+    }
+  };
+  result = String::fromChars(content.toArray());
+  debug(result);
+}
+module end;

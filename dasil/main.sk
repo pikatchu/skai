@@ -1,0 +1,25 @@
+fun main(): void {
+  fileContent = FileSystem.readTextFile("/tmp/test.sc7");
+  _fileInfo = Scade7.FileInfo::create(fileContent);
+  //  debug(fileInfo.symbols.map(x -> fileInfo.getRelativePos(x.pos, 0)));
+}
+
+fun testAstPp(): void {
+  myFun = Fun{
+    name => "foo",
+    sig => FunSig(
+      Array[Param("param1", TFloat()), Param("param2", TFloat())],
+      TFloat(),
+    ),
+    body => Some(
+      Array[
+        Equation(
+          LName("output"),
+          EBinop(Plus(), EVar("param1"), EVar("param2")),
+        ),
+      ],
+    ),
+  };
+  print_string(myFun);
+  debug(myFun);
+}

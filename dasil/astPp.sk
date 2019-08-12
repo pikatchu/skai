@@ -1,0 +1,57 @@
+/* Pretty-printer for the ast
+ */
+
+extension class Fun uses Show {
+  fun toString(): String {
+    `function ${this.name}${this.sig.toString()}${this.bodyToString()}`
+  }
+
+  fun bodyToString(): String {
+    this.body match {
+    | None() -> ";"
+    | Some(_eqs) -> "TODO"
+    }
+  }
+}
+extension class FunSig uses Show {
+  fun toString(): String {
+    "TODOSIG"
+  }
+}
+/*
+class Param(name: String, type_: Type)
+class Equation(lhs: Lhs, rhs: Expr)
+
+base class Type {
+  children =
+  | TInt()
+  | TFloat()
+  | TArray(Type)
+}
+
+base class Lhs {
+  children =
+  | LName(String)
+  | LUnder()
+  | LList(Array<Lhs>)
+}
+
+base class Expr {
+  children =
+  | EIConst(Int)
+  | EFConst(Float)
+  | EVar(String)
+  | EArray(Array<Expr>)
+  | EBinop(Bop, Expr, Expr)
+  | ECall(String, Array<Expr>)
+  | EAccess(Expr, Expr)
+}
+
+base class Bop {
+  children =
+  | Plus()
+  | Minus()
+  | Mult()
+  | Div()
+}
+*/
