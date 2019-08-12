@@ -1,0 +1,55 @@
+/* Ast for the language Dasil.
+ *
+ * Grammar:
+ *
+ *      name:: [a-z][a-zA-Z_0-9]+
+ *
+ *      function:: 'function name(type-list): type body
+ *
+ *      body::     ';' | { equation-list }
+ *
+ *      type::     Int | Float | Array<type>
+ *
+ *      equation:: lhs '=' expr ';'
+ *
+ *      lhs::      name | '_' | (name-list)
+ *
+ */
+
+class Fun{name: String, sig: FunSig, body: ?Array<Equation>}
+class FunSig(params: Array<Param>, returnType: Type)
+class Param(name: String, type_: Type)
+class Equation(lhs: Lhs, rhs: Expr)
+
+base class Type {
+  children =
+  | TInt()
+  | TFloat()
+  | TArray(Type)
+}
+
+base class Lhs {
+  children =
+  | LName(String)
+  | LUnder()
+  | LList(Array<Lhs>)
+}
+
+base class Expr {
+  children =
+  | EIConst(Int)
+  | EFConst(Float)
+  | EVar(String)
+  | EArray(Array<Expr>)
+  | EBinop(Bop, Expr, Expr)
+  | ECall(String, Array<Expr>)
+  | EAccess(Expr, Expr)
+}
+
+base class Bop {
+  children =
+  | Plus()
+  | Minus()
+  | Mult()
+  | Div()
+}

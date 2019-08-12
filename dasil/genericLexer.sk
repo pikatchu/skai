@@ -1,0 +1,83 @@
+/* Module defining a generic lexer.
+ *
+ * The lexer never fails (it never throws an exception). It is meant to be used
+ * with an array of characters. The lexer produces tokens that come in the form
+ * of positions in the source (as opposed to strings, cf class Token).
+ *
+ * There are 6 kinds of tokens:
+ *   - EOF:
+ *     Stands for "End of file".
+ *     Returned when the position is larger than the size of the content.
+ *
+ *   - White spaces:
+ *     [ ]+
+ *
+ *   - A newline (note that each newline form a separate token):
+ *     [\n]
+ *
+ *   - Numbers:
+ *     [0-9]+
+ *
+ *   - Words:
+ *     [a-zA-Z_][a-zA-Z0-9_]*
+ *
+ *   - Other:
+ *     Anything else is going to form a token of length exactly 1.
+ *
+ * What is a little bit unconventional about this lexer is that it does not
+ * maintain the position in the current file. Because of that, the position
+ * must be maintained by the caller. It may seem strange but there are several
+ * advantages:
+ *
+ *   1- The lexer is implemented by an immutable class.
+ *
+ *   2- It's easier for the caller to go back, skip, or do anything that is not
+ *      in a strict sequence.
+ */
+module GenericLexer;
+
+fun isLetter(c: Char): Bool {
+  Chars.isUpperCaseLetter(c) || Chars.isLowerCaseLetter(c) || c == '_'
+}
+
+fun isLetterOrDigit(c: Char): Bool {
+  isLetter(c) || Chars.isDigit(c)
+}
+
+value class Token(posBegin: Int, posEnd: Int) {
+  fun isEOF(): Bool {
+    this.posEnd == -1
+  }
+}
+
+const EOF: Token = Token(-1, -1);
+
+class .GenericLexer(content: Vector<Char>) {
+  fun token(posBegin: Int, size: Int = this.content.size()): Token {
+    pos = posBegin.toInt();
+    if (pos >= size) {
+      return EOF;
+    };
+    currentChar = this.content[pos];
+    !pos = pos + 1;
+    if (currentChar == ' ') {
+      while (pos < size && this.content[pos] == ' ') {
+        !pos = pos + 1
+      }
+    } else if (currentChar == '\n') {
+      void
+    } else if (Chars.isDigit(currentChar)) {
+      while (pos < size && Chars.isDigit(this.content[pos])) {
+        !pos = pos + 1
+      }
+    } else if (isLetter(currentChar)) {
+      while (pos < size && isLetterOrDigit(this.content[pos])) {
+        !pos = pos + 1
+      }
+    };
+    posEnd = pos;
+    Token(posBegin, posEnd)
+  }
+}
+
+module end;

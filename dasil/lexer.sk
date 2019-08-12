@@ -1,0 +1,135 @@
+/******************************************************************************
+ * The scade7 lexer.
+ *****************************************************************************/
+
+module Scade7;
+
+base class TokenKind uses Equality {
+  children =
+  | TEOF()
+  | TInt()
+  | TFloat()
+  | TWord()
+  | TSpace()
+  | TComment()
+  | TString()
+  | TUnterminatedComment()
+  | TNewline()
+  | TOther()
+}
+
+value class Token(kind: TokenKind, posBegin: Int, posEnd: Int) {
+  fun isEOF(): Bool {
+    this.kind match {
+    | TEOF() -> true
+    | _ -> false
+    }
+  }
+}
+
+const EOF: Token = Token(TEOF(), -1, -1);
+
+class Lexer(
+  private glexer: GenericLexer,
+  content: Vector<Char>,
+  keywords: Set<String>,
+) {
+  static fun create(chars: Vector<Char>, keywords: Set<String> = Set[]): this {
+    static(GenericLexer(chars), chars, keywords)
+  }
+
+  fun charAt(pos: Int): Char {
+    this.content[pos]
+  }
+
+  fun matches(token: Token, keyword: String): Bool {
+    posBegin = token.posBegin;
+    posEnd = token.posEnd;
+    if (posBegin > posEnd || posBegin < 0 || posEnd >= this.content.size()) {
+      return false
+    };
+    i = posBegin;
+    for (c in keyword) {
+      if (c != this.charAt(i)) {
+        return false;
+      };
+      !i = i + 1
+    };
+    i == posEnd
+  }
+
+  fun comment(pos: Int): Token {
+    posBegin = pos;
+    depth = 1;
+    loop {
+      if (pos + 1 >= this.content.size()) return EOF;
+      c = this.charAt(pos);
+      !pos = pos + 1;
+      c match {
+      | '/' if (this.charAt(pos) == '*') ->
+        !depth = depth + 1;
+        !pos = pos + 1
+      | '*' if (this.charAt(pos) == '/') ->
+        !depth = depth - 1;
+        !pos = pos + 1;
+        return Token(TComment(), posBegin, pos)
+      | _ -> void
+      }
+    }
+  }
+
+  fun string(pos: Int): Token {
+    posBegin = pos;
+    loop {
+      if (pos >= this.content.size()) return EOF;
+      c = this.charAt(pos);
+      !pos = pos + 1;
+      c match {
+      | '"' -> return Token(TString(), posBegin, pos)
+      | '\\' -> !pos = pos + 1
+      | _ -> void
+      }
+    }
+  }
+
+  fun next(pos: Int): Token {
+    posBegin = pos;
+    contentSize = this.content.size();
+    if (pos == -1 || pos >= contentSize) return EOF;
+    token = this.glexer.token(pos);
+    !pos = token.posEnd;
+    this.charAt(token.posBegin) match {
+    | '/' if (pos < contentSize && this.charAt(pos) == '*') -> this.comment(pos)
+    | ' ' -> Token(TSpace(), token.posBegin, token.posEnd)
+    | '\n' -> Token(TNewline(), token.posBegin, token.posEnd)
+    | '"' -> this.string(pos)
+    | c if (Chars.isDigit(c)) -> this.afterDigit(posBegin, pos)
+    | c if (GenericLexer.isLetter(c)) ->
+      Token(TWord(), token.posBegin, token.posEnd)
+    | _ -> Token(TOther(), token.posBegin, token.posEnd)
+    }
+  }
+
+  fun afterDigit(posBegin: Int, pos: Int): Token {
+    if (pos < this.content.size() && this.charAt(pos) == '.') {
+      !pos = pos + 1;
+      if (Chars.isDigit(this.content[pos])) {
+        token = this.glexer.token(pos);
+        !pos = token.posEnd;
+      };
+      Token(TFloat(), posBegin, pos)
+    } else {
+      Token(TInt(), posBegin, pos)
+    }
+  }
+
+  fun mkChars(posBegin: Int, posEnd: Int): Array<Char> {
+    this.content.slice(posBegin, posEnd).toArray()
+  }
+
+  fun mkString(token: Token): String {
+    String::fromChars(this.mkChars(token.posBegin, token.posEnd))
+  }
+}
+
+module end;
