@@ -3,6 +3,7 @@ fun invalid_usage<T>(): T {
   exit(2)
 }
 
+/*
 untracked fun main(): void {
   args = arguments();
   seed = if (args.size() == 0) {
@@ -25,3 +26,4 @@ untracked fun main(): void {
   print_string("------------------ TRACE ------------------");
   Eval::new(print_raw, program).go(22);
 }
+*/

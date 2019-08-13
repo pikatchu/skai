@@ -16,10 +16,17 @@
  *
  */
 
-class Fun{name: String, sig: FunSig, body: ?Array<Equation>}
+class Fun{name: String, sig: FunSig, body: FunBody}
 class FunSig(params: Array<Param>, returnType: Type)
 class Param(name: String, type_: Type)
 class Equation(lhs: Lhs, rhs: Expr)
+
+base class FunBody {
+  children =
+  | FBNone()
+  | FBLazy(String)
+  | FBEqs(Array<Equation>)
+}
 
 base class Type {
   children =

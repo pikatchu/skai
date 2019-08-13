@@ -1,7 +1,16 @@
-fun main(): void {
-  fileContent = FileSystem.readTextFile("/tmp/test.sc7");
-  _fileInfo = Scade7.FileInfo::create(fileContent);
-  //  debug(fileInfo.symbols.map(x -> fileInfo.getRelativePos(x.pos, 0)));
+untracked fun main(): void {
+  /*  fileName = "/tmp/test.sc7";
+    fileContent = FileSystem.readTextFile(fileName);
+    _errors = Dasil.addFile(fileName, fileContent);
+    debug("Parsing foo");
+    (errors1, funSig) = Dasil.parseSignature("foo");
+    debug(funSig);
+    print_string(errors1);
+    debug("Parsing bar");
+    (errors2, _) = Dasil.parseSignature("bar");
+    print_string(errors2);
+  */
+  TestDasil.testParser();
 }
 
 fun testAstPp(): void {
@@ -11,7 +20,7 @@ fun testAstPp(): void {
       Array[Param("param1", TFloat()), Param("param2", TFloat())],
       TFloat(),
     ),
-    body => Some(
+    body => FBEqs(
       Array[
         Equation(
           LName("output"),

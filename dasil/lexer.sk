@@ -1,8 +1,8 @@
 /******************************************************************************
- * The scade7 lexer.
+ * The Dasil lexer.
  *****************************************************************************/
 
-module Scade7;
+module Dasil;
 
 base class TokenKind uses Equality {
   children =
@@ -30,12 +30,13 @@ value class Token(kind: TokenKind, posBegin: Int, posEnd: Int) {
 const EOF: Token = Token(TEOF(), -1, -1);
 
 class Lexer(
+  fileName: String,
+  offset: Int,
   private glexer: GenericLexer,
-  content: Vector<Char>,
-  keywords: Set<String>,
+  content: Array<Char>,
 ) {
-  static fun create(chars: Vector<Char>, keywords: Set<String> = Set[]): this {
-    static(GenericLexer(chars), chars, keywords)
+  static fun create(filename: String, offset: Int, chars: Array<Char>): this {
+    static(filename, offset, GenericLexer(chars), chars)
   }
 
   fun charAt(pos: Int): Char {
@@ -124,7 +125,7 @@ class Lexer(
   }
 
   fun mkChars(posBegin: Int, posEnd: Int): Array<Char> {
-    this.content.slice(posBegin, posEnd).toArray()
+    this.content.slice(posBegin, posEnd)
   }
 
   fun mkString(token: Token): String {

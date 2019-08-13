@@ -1,28 +1,40 @@
-/******************************************************************************
- * Class finding the global symbols and the newlines in a file.
- *****************************************************************************/
+module Dasil;
 
-module Scade7;
+/******************************************************************************
+ * Types.
+ *****************************************************************************/
 
 value class Symbol(name: String, pos: Int)
 value class RelativePos(line: Int, col: Int)
 
-fun getNewlines(content: Vector<Char>): Array<Int> {
-  newlines = mutable Vector[];
-  pos = 0;
-  loop {
-    if (pos >= content.size()) return newlines.toArray();
-    content[pos] match {
-    | '\n' ->
-      newlines.push(pos);
-      !pos = pos + 1
-    | _ -> !pos = pos + 1
-    }
-  }
+/******************************************************************************
+ * Source code caches.
+ *****************************************************************************/
+
+// Associates: fileName => Array<Char>
+const sourceTable: Reactive.Table<Array<Char>> = Reactive.Table::create();
+
+untracked fun populateSource(fileName: String, fileContent: String): void {
+  sourceTable.set(fileName, fileName, Array[fileContent.chars().toArray()]);
 }
 
-fun getSymbols(chars: Vector<Char>): Array<Symbol> {
-  lexer = Lexer::create(chars);
+fun getSource(fileName: String): Array<Char> {
+  contents = sourceTable.get(fileName);
+  invariant(contents.size() == 1);
+  contents[0]
+}
+
+/******************************************************************************
+ * Symbols table.
+ *****************************************************************************/
+
+// Associates: symbolName => (fileName, filePosition, positionNextSymbol)
+const symbolTable: Reactive.Table<
+  (String, Int, Int),
+> = Reactive.Table::create();
+
+fun getSymbols(chars: Array<Char>): Array<Symbol> {
+  lexer = Lexer::create("", 0, chars);
   symbols = mutable Vector[];
   pos = 0;
   loop {
@@ -50,40 +62,99 @@ fun getSymbols(chars: Vector<Char>): Array<Symbol> {
   }
 }
 
-class FileInfo{symbols: Array<Symbol>, newlines: Array<Int>} {
-  static fun create(fileContent: String): FileInfo {
-    chars = fileContent.chars();
-    FileInfo{symbols => getSymbols(chars), newlines => getNewlines(chars)}
-  }
+untracked fun populateSymbols(fileName: String): Errors {
+  content = getSource(fileName);
+  symbols = getSymbols(content);
 
-  fun getRelativePos(offset: Int, pos: Int): RelativePos {
-    !pos = offset + pos;
-    line = this.getLine(pos, 0, this.newlines.size() - 1);
-    linePos = this.getLinePos(line);
-    RelativePos(line + 2, pos - linePos)
-  }
+  errs = Errors[];
 
-  private fun getLine(pos: Int, i: Int, j: Int): Int {
-    if (i > j) return j;
-    pivot = (i + j) / 2;
-    pivotPos = this.newlines[pivot];
-    if (pos > pivotPos) {
-      this.getLine(pos, pivot + 1, j)
-    } else if (pos < pivotPos) {
-      this.getLine(pos, i, pivot - 1)
+  // Look for duplicates
+  symbolMap = mutable Map<String, (Int, Int)>[];
+  for (i in Range(0, symbols.size())) {
+    symbol = symbols[i];
+    nextSymbolPos = if (i + 1 < symbols.size()) {
+      symbols[i + 1].pos
     } else {
-      pivot
+      content.size()
     };
-  }
+    if (symbolMap.containsKey(symbol.name)) {
+      !errs = errs.add(
+        DuplicateSymbolInFile(
+          fileName,
+          symbol.name,
+          symbolMap[symbol.name].i0,
+          symbol.pos,
+        ),
+      );
+    } else {
+      symbolMap![symbol.name] = (symbol.pos, nextSymbolPos);
+    }
+  };
 
-  private fun getLinePos(pos: Int): Int {
-    if (pos < 0) 0 else (this.newlines[pos] + 1)
-  }
+  for (symbol => posAndPosNext in symbolMap) {
+    (pos, posNext) = posAndPosNext;
+    symbolTable.set(fileName, symbol, Array[(fileName, pos, posNext)])
+  };
+
+  errs
+}
+
+/******************************************************************************
+ * Newlines table.
+ *****************************************************************************/
+
+const newlinesTable: Reactive.Table<Int> = Reactive.Table::create();
+
+untracked fun populateNewlines(fileName: String): void {
+  content = getSource(fileName);
+  newlines = mutable Vector[];
+  for (i => c in content) {
+    c match {
+    | '\n' -> newlines.push(i)
+    | _ -> void
+    }
+  };
+  newlinesTable.set(fileName, fileName, newlines.toArray());
+}
+
+fun getRelativePos(fileName: String, pos: Int): RelativePos {
+  newlines = newlinesTable.get(fileName);
+  line = getLine(newlines, pos, 0, newlines.size() - 1);
+  linePos = getLinePos(newlines, line);
+  RelativePos(line + 2, pos - linePos)
+}
+
+private fun getLine(newlines: Array<Int>, pos: Int, i: Int, j: Int): Int {
+  if (i > j) return j;
+  pivot = (i + j) / 2;
+  pivotPos = newlines[pivot];
+  if (pos > pivotPos) {
+    getLine(newlines, pos, pivot + 1, j)
+  } else if (pos < pivotPos) {
+    getLine(newlines, pos, i, pivot - 1)
+  } else {
+    pivot
+  };
+}
+
+private fun getLinePos(newlines: Array<Int>, pos: Int): Int {
+  if (pos < 0) 0 else (newlines[pos] + 1)
+}
+
+/******************************************************************************
+ * Main entry point.
+ *****************************************************************************/
+
+untracked fun addFile(fileName: String, fileContent: String): Errors {
+  populateSource(fileName, fileContent);
+  errors = populateSymbols(fileName);
+  populateNewlines(fileName);
+  errors
 }
 
 module end;
 
-module Scade7FileInfoTest;
+module DasilFileInfoTest;
 
 fun go(): void {
   rgen = Random::mcreate(23);

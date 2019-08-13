@@ -1,0 +1,336 @@
+/******************************************************************************/
+/* The skip parser.
+ *
+ * The parser works in multiple phases, for better error recovery. It first
+ * defines areas where it expects to find signatures or bodies, and then
+ * in a second phase actually does the parsing.
+ */
+/*****************************************************************************/
+
+module Dasil;
+
+memoized fun getFunChars(symbolName: String): (String, Int, Array<Char>) {
+  symbols = Dasil.symbolTable.get(symbolName);
+  invariant(symbols.size() == 1);
+  (fileName, posSymbol, posNext) = symbols[0];
+  src = getSource(fileName);
+  content = src.slice(posSymbol, posNext);
+  (fileName, posSymbol, content)
+}
+
+// Helper function, looks for the position of a character
+fun lookFor(lexer: Lexer, pos: Int, endChars: Array<Char>, end: Int): Int {
+  loop {
+    token = lexer.next(pos);
+    if (token.kind == TEOF()) return end;
+    for (char in endChars) {
+      if (lexer.charAt(pos) == char) return pos
+    };
+    !pos = token.posEnd;
+  }
+}
+
+fun sigArea(lexer: Dasil.Lexer, pos: Int, end: Int): (Int, Int) {
+  begin = pos;
+  token = lexer.next(pos);
+  !pos = token.posEnd;
+
+  /* We reached the end of the file before finding the signature. */
+  if (token.kind == TEOF()) return (begin, begin);
+
+  posBegin = lookFor(lexer, pos, Array['(', ')', ':', '{', ';'], end);
+
+  /* Looks for end of the signature. */
+  !pos = lookFor(lexer, pos, Array['{', ';'], end);
+
+  (posBegin, pos)
+}
+
+memoized fun getSignatureChars(symbolName: String): (String, Int, Array<Char>) {
+  (fileName, offset, chars) = getFunChars(symbolName);
+  lexer = Lexer::create(fileName, offset, chars);
+  (sigBegin, sigEnd) = sigArea(lexer, 0, chars.size());
+  (fileName, offset + sigBegin, chars.slice(sigBegin, sigEnd))
+}
+
+value class Parser(errors: Errors, lexer: Lexer, pos: Int) {
+  fun next(): (this, Token) {
+    !this = this.skipSpaces();
+    token = this.lexer.next(this.pos);
+    !this.pos = token.posEnd;
+    (this, token)
+  }
+
+  fun onlySpaces(): this {
+    loop {
+      token = this.lexer.next(this.pos);
+      token.kind match {
+      | TEOF() -> return this
+      | TSpace()
+      | TNewline()
+      | TComment() ->
+        !this.pos = token.posEnd
+      | TUnterminatedComment() -> invariant_violation("TODO Unterminated")
+      | TInt()
+      | TFloat()
+      | TWord()
+      | TString()
+      | TOther() ->
+        invariant_violation("TODO Untermin")
+      }
+    }
+  }
+
+  fun skipSpaces(): this {
+    loop {
+      token = this.lexer.next(this.pos);
+      token.kind match {
+      | TSpace()
+      | TNewline()
+      | TComment()
+      | TUnterminatedComment() ->
+        !this.pos = token.posEnd
+      | TInt()
+      | TFloat()
+      | TWord()
+      | TString()
+      | TOther()
+      | TEOF() ->
+        return this
+      }
+    }
+  }
+
+  fun errorExpectedChar(char: Char): this {
+    !this.errors = this.errors.add(
+      ExpectedChar(this.lexer.fileName, this.lexer.offset + this.pos, char),
+    );
+    this
+  }
+
+  fun errorExpectedName(): this {
+    !this.errors = this.errors.add(
+      ExpectedName(this.lexer.fileName, this.lexer.offset + this.pos),
+    );
+    this
+  }
+
+  fun eatChar(char: Char): this {
+    pos = this.pos;
+    (!this, token) = this.next();
+    if (token.kind == TEOF() || this.lexer.charAt(token.posBegin) != char) {
+      !this.pos = pos;
+      !this = this.errorExpectedChar(char);
+    };
+    this
+  }
+
+  fun parseParameters(): (this, Array<Param>) {
+    !this = this.eatChar('(');
+    (!this, paramList) = this.parseParameterList();
+    params = Array::createFromItems(paramList);
+    (this, params)
+  }
+
+  fun parseParameterList(): (this, List<Param>) {
+    (!this, token) = this.next();
+    token.kind match {
+    | TEOF() ->
+      !this = this.errorExpectedChar(')');
+      (this, List[])
+    | TWord() ->
+      name = this.lexer.mkString(token);
+      !this = this.eatChar(':');
+      (!this, ty) = this.parseType();
+      saved = this;
+      (!this, !token) = this.next();
+      param = Param(name, ty);
+      token.kind match {
+      | TEOF() ->
+        !this = this.errorExpectedChar(')');
+        (this, List[])
+      | TWord() ->
+        !this = saved;
+        !this = this.errorExpectedChar(',');
+        (!this, tail) = this.parseParameterList();
+        (this, List.Cons(param, tail))
+      | TOther() ->
+        if (this.lexer.charAt(token.posBegin) == ',') {
+          (!this, tail) = this.parseParameterList();
+          (this, List.Cons(param, tail))
+        } else if (this.lexer.charAt(token.posBegin) == ')') {
+          (this, List[param])
+        } else {
+          !this = saved;
+          !this = this.errorExpectedChar(')');
+          (!this, tail) = this.parseParameterList();
+          (this, List.Cons(param, tail))
+        }
+      | TComment()
+      | TNewline()
+      | TSpace() ->
+        invariant_violation("Should have been eated by .next call")
+      | _ ->
+        !this = this.errorExpectedChar(')');
+        !this = this.lookFor(Array[')', ':', '{', ';']);
+        (this, List[])
+      }
+    | TOther() if (this.lexer.charAt(token.posBegin) == ')') -> (this, List[])
+    | TOther() if (this.lexer.charAt(token.posBegin) == ',') ->
+      !this = this.errorExpectedName();
+      this.parseParameterList()
+    | _ ->
+      !this = this.errorExpectedName();
+      (this, List[])
+    }
+  }
+
+  fun lookFor(chars: Array<Char>): this {
+    contentSize = this.lexer.content.size();
+    !this.pos = lookFor(this.lexer, this.pos, chars, contentSize);
+    this
+  }
+
+  fun parseType(): (this, Type) {
+    (!this, token) = this.next();
+    if (this.lexer.mkString(token) != "Int") {
+      invariant_violation("TODO: other types")
+    };
+    (this, .TInt())
+  }
+
+  fun parseSignature(): (this, FunSig) {
+    (!this, parameters) = this.parseParameters();
+    !this = this.eatChar(':');
+    (!this, returnType) = this.parseType();
+    //  !errors = onlySpaces(errors, lexer, pos);
+    sig = FunSig(parameters, returnType);
+    (this, sig)
+  }
+}
+
+memoized fun parseSignature(symbolName: String): (Errors, FunSig) {
+  (fileName, offset, content) = getSignatureChars(symbolName);
+  errors = Errors[];
+  pos = 0;
+  lexer = Lexer::create(fileName, offset, content);
+  parser = Parser(errors, lexer, pos);
+  (!parser, funSig) = parser.parseSignature();
+  (parser.errors, funSig)
+}
+
+/******************************************************************************/
+/* The body parser. */
+/******************************************************************************/
+
+fun bodyArea(lexer: Dasil.Lexer, pos: Int, end: Int): (Int, Int) {
+  begin = pos;
+
+  /* Looks for the beginning of the body. */
+  !pos = lookFor(lexer, pos, Array['(', '{', ';', '='], end);
+
+  /* We reached the end of the file before finding the body. */
+  if (pos >= end) return (begin, begin);
+
+  /* The body is defined, and it's empty */
+  if (lexer.charAt(pos) == ';') return (pos, pos + 1);
+
+  posBegin = if (lexer.charAt(pos) == '{') pos else return (begin, begin);
+  !pos = pos + 1;
+
+  depth = 1;
+  while (depth > 0) {
+    if (pos >= end) return (posBegin, end);
+    token = lexer.next(pos);
+    !pos = token.posEnd;
+    lexer.charAt(token.posBegin) match {
+    | '{' -> !depth = depth + 1
+    | '}' ->
+      !pos = pos + 1;
+      !depth = depth - 1
+    | _ -> void
+    }
+  };
+  (posBegin, pos)
+}
+
+memoized fun getBodyChars(symbolName: String): Array<Char> {
+  (fileName, offset, chars) = getFunChars(symbolName);
+  (_, _, sigChars) = getSignatureChars(symbolName);
+  lexer = Lexer::create(fileName, offset, chars);
+  (bodyBegin, bodyEnd) = bodyArea(lexer, sigChars.size(), chars.size());
+  chars.slice(bodyBegin, bodyEnd)
+}
+
+fun getFun(funName: String): (Errors, Fun) {
+  (errors, sig) = parseSignature(funName);
+  (errors, Fun{name => funName, sig => sig, body => FBLazy(funName)})
+}
+
+module end;
+
+module TestDasil;
+
+/* Function that tests the parser (with a focus on function signatures).
+ * It first generates a random program, then applies the transform provided
+ * by the caller to the program, and then checks that the result parsed is
+ * the same.
+ */
+untracked fun testSignatureParser(
+  nbrTest: Int,
+  f: Array<Char> -> Array<Char>,
+): void {
+  genConfig = TestDasil.Config{
+    nbrFuns => 1,
+    maxEqs => 1,
+    maxParams => 5,
+    seed => 23,
+  };
+  for (i in Range(1, nbrTest)) {
+    source = TestDasil.genProgram(genConfig with {seed => i});
+    programStr = String::fromChars(f(source.chars().toArray()));
+    _errors = Dasil.addFile("fileTest.das", programStr);
+    (_errors2, fun_) = Dasil.getFun("fun0");
+    funStr = fun_.toString();
+    if (funStr == programStr) {
+      print_string(`Test ${i}: Passed`)
+    } else {
+      print_string(`Test ${i}: Failed`);
+      print_string("Original program was: ");
+      print_string(programStr);
+      print_string("Parsed program is: ");
+      print_string(funStr);
+      exit(2)
+    }
+  }
+}
+
+fun replaceFirst(
+  chars: Array<Char>,
+  char: Char,
+  replacementChar: Char,
+): Array<Char> {
+  result = mutable Vector[];
+  found = false;
+  for (c in chars) {
+    if (c == char && !found) {
+      !found = true;
+      result.push(replacementChar);
+      continue;
+    };
+    result.push(c);
+  };
+  result.toArray()
+}
+
+untracked fun testParser(): void {
+  debug(
+    String::fromChars(replaceFirst("afafd(adfas".chars().toArray(), '(', ' ')),
+  );
+  testSignatureParser(10, x -> x);
+
+  // Removes the first '('.
+  testSignatureParser(10, chars -> replaceFirst(chars, '(', ' '));
+}
+
+module end;
