@@ -1,0 +1,34 @@
+untracked fun main(): void {
+ testAstlower(); 
+}
+
+untracked fun testAstlower(): void {
+  myFun = Fun{
+    name => "foo",
+    sig => FunSig(
+      Array[Param("x", TFloat()), Param("y", TFloat())],
+      TFloat(),
+    ),
+    body => Some(
+      Array[
+        Equation(
+          LName("x2"),
+          EBinop(Mult(), EVar("x"), EVar("x")) 
+        ),
+        Equation(
+          LName("y2"),
+          EBinop(Mult(), EVar("y"), EVar("y"))
+        ),
+        Equation(
+          LName("xy"),
+          EBinop(Mult(), EVar("x"), EVar("y"))
+        ),
+        Equation(
+          LName("output"),
+          EBinop(Plus(), EVar("x2"), EVar("y2"))
+        )
+      ],
+    ),
+  };
+  lower(myFun);
+}
