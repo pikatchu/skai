@@ -3,55 +3,91 @@
 
 extension class Fun uses Show {
   fun toString(): String {
-    `function ${this.name}${this.sig.toString()}${this.bodyToString()}`
+    `function ${this.name}${this.sig} ${this.bodyToString()}`
   }
 
   fun bodyToString(): String {
     this.body match {
     | None() -> ";"
-    | Some(_eqs) -> "TODO"
+    | Some(eqs) -> `{\n  ${eqs.join("\n  ")}\n}\n`
     }
   }
 }
+
 extension class FunSig uses Show {
   fun toString(): String {
-    "TODOSIG"
+    `(${this.params.join(", ")}): ${this.returnType}`
   }
 }
-/*
-class Param(name: String, type_: Type)
-class Equation(lhs: Lhs, rhs: Expr)
 
-base class Type {
-  children =
-  | TInt()
-  | TFloat()
-  | TArray(Type)
+extension class Param uses Show {
+  fun toString(): String {
+    `${this.name} : ${this.type_}`
+  }
 }
 
-base class Lhs {
-  children =
-  | LName(String)
-  | LUnder()
-  | LList(Array<Lhs>)
+extension base class Type uses Show {
+  fun toString(): String {
+    this match {
+    | TInt() -> "int"
+    | TFloat() -> "float"
+    | TArray(ty) -> `[${ty.toString()}]`
+    }
+  }
 }
 
-base class Expr {
-  children =
-  | EIConst(Int)
-  | EFConst(Float)
-  | EVar(String)
-  | EArray(Array<Expr>)
-  | EBinop(Bop, Expr, Expr)
-  | ECall(String, Array<Expr>)
-  | EAccess(Expr, Expr)
+extension class Equation uses Show {
+  fun toString(): String {
+    `${this.lhs} = ${this.rhs};`
+  }
 }
 
-base class Bop {
-  children =
-  | Plus()
-  | Minus()
-  | Mult()
-  | Div()
+extension base class Lhs uses Show {
+  fun toString(): String {
+    this match {
+    | LName(n) -> n
+    | LUnder() -> "_"
+    | LList(l) -> `(${l.join(", ")})`
+    }
+  }
 }
-*/
+
+extension base class Expr uses Show {
+  fun toString(): String {
+    this match {
+    | EIConst(v) -> v.toString()
+    | EFConst(v) -> v.toString()
+    | EVar(v) -> v
+    | EArray(v) -> `[${v.join(", ")}]`
+    | EBinop(o, e1, e2) -> `${this.paren(e1, 0)} ${o} ${this.paren(e2, 1)}`
+    | ECall(n, a) -> `${n}(${a.join(", ")})`
+    | EAccess(e1, e2) -> `${e1}[${e2}]`
+    }
+  }
+
+  private fun paren(x: Expr, lvloffset: Int): String {
+    req_level = this.level() - lvloffset;
+    if (x.level() > req_level) `(${x})` else x.toString()
+  }
+
+  private fun level(): Int {
+    this match {
+    | EBinop(Plus(), _, _) -> 2
+    | EBinop(Minus(), _, _) -> 2
+    | EBinop(Mult(), _, _) -> 1
+    | EBinop(Div(), _, _) -> 1
+    | _ -> 0
+    }
+  }
+}
+
+extension base class Bop uses Show {
+  fun toString(): String {
+    this match {
+    | Plus() -> "+"
+    | Minus() -> "-"
+    | Mult() -> "*"
+    | Div() -> "/"
+    }
+  }
+}
