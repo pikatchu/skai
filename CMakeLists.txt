@@ -15,6 +15,7 @@ include_directories(
 )
 add_definitions(${LLVM_DEFINITIONS})
 
-add_library(llvm_backend backends/llvm/backend.cpp)
+add_llvm_library(llvm_backend backends/llvm/backend.cpp)
+
 
 

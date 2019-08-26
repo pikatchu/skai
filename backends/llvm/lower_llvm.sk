@@ -83,6 +83,8 @@ untracked native fun build_mul_op(arg1: Value, arg2: Value, builder:IRBuilder): 
 @cpp_extern
 untracked native fun build_return(val: Value, builder:IRBuilder): void;
 
+class LLVMBackendException() extends Exception
+
 
 untracked fun buildBinOp(op: Bop, lhs: Expr, rhs: Expr, builder: IRBuilder, context: LLVMContext) : Value {
   lhsValue = lhs match {
@@ -120,16 +122,14 @@ untracked fun buildExpr(expr: Expr, irBuilder: IRBuilder, context: LLVMContext):
 untracked fun buildEquation(eq: Equation, irBuilder: IRBuilder, context: LLVMContext): Value {
   val = buildExpr(eq.rhs, irBuilder, context);
   eq.lhs match {
-    | LName(name) -> 
-      print_string(name);
-      create_variable(name, val, context);
-    | _ -> print_string("nothing");
+    | LName(name) -> create_variable(name, val, context);
+    | _ -> throw LLVMBackendException();
   };
   val
 }
 
 // Lower the AST into an LLVM module.
-untracked fun lower(ast: Fun) : void {
+untracked fun lower(ast: Fun) : LLVMContext {
   context = create_context();
   args = create_arg_list();
   for (param in ast.sig.params) { 
@@ -147,7 +147,7 @@ untracked fun lower(ast: Fun) : void {
   };
   function = create_function(ast.name, args, returnType, context); 
   ast.body match {
-    | None() -> print_string("none");
+    | None() -> throw LLVMBackendException();
     | Some(body) -> 
       block = create_basic_block("EntryBlock", function, context);
       irBuilder = create_ir_builder(block);
@@ -156,7 +156,6 @@ untracked fun lower(ast: Fun) : void {
       build_return(returnValue, irBuilder);
       release_ir_builder(irBuilder);
   };
-  print_module(context);
   release_arg_list(args);
-  release_context(context);
+  context
 }

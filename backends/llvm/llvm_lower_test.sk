@@ -6,8 +6,8 @@ untracked fun testAstlower(): void {
   myFun = Fun{
     name => "foo",
     sig => FunSig(
-      Array[Param("x", TFloat()), Param("y", TFloat())],
-      TFloat(),
+      Array[Param("x", TInt()), Param("y", TInt())],
+      TInt(),
     ),
     body => Some(
       Array[
@@ -30,5 +30,7 @@ untracked fun testAstlower(): void {
       ],
     ),
   };
-  lower(myFun);
+  llvmContext = lower(myFun);
+  print_module(llvmContext);
+  release_context(llvmContext);
 }
