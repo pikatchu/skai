@@ -100,13 +100,13 @@ extern "C" {
   }
 
 
-  Value* SKIP_get_variable(skip::String name, Context* ctx) {
+  Value* SKIP_get_variable(skip::String name, const Context* ctx) {
    const std::string c_name = name.toCppString();
    auto var_iter = ctx->variables.find(c_name);
    if (var_iter != ctx->variables.end()) {
      return var_iter->second;
    }
-   // FIXME : Better error handeling ? 
+   // FIXME : Better error handeling ?
    throw std::invalid_argument("Can't find variable " + c_name);
   }
 
@@ -116,7 +116,7 @@ extern "C" {
   }
 
   void SKIP_print_module(Context* ctx) {
-    outs() << *ctx->module; 
+    outs() << *ctx->module;
   }
 
   Value* SKIP_build_add_op(Value* arg1, Value* arg2, IRBuilder<>* builder) {

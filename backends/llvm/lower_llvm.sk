@@ -17,25 +17,22 @@ native class IRBuilder
 native class Value
 
 
-@cpp_extern 
-untracked native fun create_context(): LLVMContext;
+@cpp_extern
+native fun create_context(): LLVMContext;
 
 @cpp_extern
 untracked native fun release_context(context: LLVMContext): void;
 
 @cpp_extern
-untracked native fun print_module(context: LLVMContext): void;
-
-@cpp_extern
-untracked native fun compile(context: LLVMContext): void;
+native fun print_module(context: LLVMContext): void;
 
 @cpp_extern
 untracked native fun create_float_type(context: LLVMContext): Type;
 
-@cpp_extern 
+@cpp_extern
 untracked native fun create_int_type(context: LLVMContext): Type;
 
-@cpp_extern 
+@cpp_extern
 untracked native fun create_arg_list(): ArgumentList;
 
 @cpp_extern
@@ -66,10 +63,10 @@ untracked native fun emit_float_const(val: Float, irBuilder: IRBuilder): Value;
 untracked native fun create_variable(name: String, value: Value, context: LLVMContext): void;
 
 @cpp_extern
-untracked native fun get_variable(name: String, context: LLVMContext): Value;
+native fun get_variable(name: String, context: LLVMContext): Value;
 
 @cpp_extern
-untracked native fun null_value(): Value;
+native fun null_value(): Value;
 
 @cpp_extern
 untracked native fun build_add_op(arg1: Value, arg2: Value, builder:IRBuilder): Value;
