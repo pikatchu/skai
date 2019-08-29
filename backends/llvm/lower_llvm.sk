@@ -1,0 +1,158 @@
+@cpp_extern
+native class LLVMContext
+
+@cpp_extern
+native class ArgumentList
+
+@cpp_extern
+native class Function
+
+@cpp_extern
+native class BasicBlock
+
+@cpp_extern
+native class IRBuilder
+
+@cpp_extern
+native class Value
+
+
+@cpp_extern
+native fun create_context(): LLVMContext;
+
+@cpp_extern
+untracked native fun release_context(context: LLVMContext): void;
+
+@cpp_extern
+native fun print_module(context: LLVMContext): void;
+
+@cpp_extern
+untracked native fun create_float_type(context: LLVMContext): Type;
+
+@cpp_extern
+untracked native fun create_int_type(context: LLVMContext): Type;
+
+@cpp_extern
+untracked native fun create_arg_list(): ArgumentList;
+
+@cpp_extern
+untracked native fun release_arg_list(args: ArgumentList): void;
+
+@cpp_extern
+untracked native fun add_argument(argName: String, arg: Type, args: ArgumentList): void;
+
+@cpp_extern
+untracked native fun create_function(name: String, args: ArgumentList, returnType: Type, context: LLVMContext) : Function;
+
+@cpp_extern
+untracked native fun create_basic_block(name: String, function: Function, context: LLVMContext) : BasicBlock;
+
+@cpp_extern
+untracked native fun create_ir_builder(basicBlock: BasicBlock): IRBuilder;
+
+@cpp_extern
+untracked native fun release_ir_builder(irBuilder: IRBuilder): void;
+
+@cpp_extern
+untracked native fun emit_int_const(val: Int, irBuilder: IRBuilder): Value;
+
+@cpp_extern
+untracked native fun emit_float_const(val: Float, irBuilder: IRBuilder): Value;
+
+@cpp_extern
+untracked native fun create_variable(name: String, value: Value, context: LLVMContext): void;
+
+@cpp_extern
+native fun get_variable(name: String, context: LLVMContext): Value;
+
+@cpp_extern
+native fun null_value(): Value;
+
+@cpp_extern
+untracked native fun build_add_op(arg1: Value, arg2: Value, builder:IRBuilder): Value;
+
+@cpp_extern
+untracked native fun build_sub_op(arg1: Value, arg2: Value, builder:IRBuilder): Value;
+
+@cpp_extern
+untracked native fun build_mul_op(arg1: Value, arg2: Value, builder:IRBuilder): Value;
+
+@cpp_extern
+untracked native fun build_return(val: Value, builder:IRBuilder): void;
+
+class LLVMBackendException() extends Exception
+
+
+untracked fun buildBinOp(op: Bop, lhs: Expr, rhs: Expr, builder: IRBuilder, context: LLVMContext) : Value {
+  lhsValue = lhs match {
+    | EIConst(val) -> emit_int_const(val, builder);
+    | EFConst(val) -> emit_float_const(val, builder);
+    | EVar(name) -> get_variable(name, context);
+    | EBinop(opVal, lhsVal, rhsVal) -> buildBinOp(opVal, lhsVal, rhsVal, builder, context);
+    | _ -> null_value();
+  };
+  rhsValue = rhs match {
+    | EIConst(val) -> emit_int_const(val, builder);
+    | EFConst(val) -> emit_float_const(val, builder);
+    | EVar(name) -> get_variable(name, context);
+    | EBinop(opVal, lhsVal, rhsVal) -> buildBinOp(opVal, lhsVal, rhsVal, builder, context);
+    | _ -> null_value();
+  };
+  op_val = op match {
+    | Plus() -> build_add_op(lhsValue, rhsValue, builder);
+    | Minus() -> build_sub_op(lhsValue, rhsValue, builder);
+    | Mult() -> build_mul_op(lhsValue, rhsValue, builder);
+    | _ -> null_value();
+  };
+  (op_val)
+}
+
+untracked fun buildExpr(expr: Expr, irBuilder: IRBuilder, context: LLVMContext): Value {
+  expr match {
+    | EIConst(val) -> emit_int_const(val, irBuilder);
+    | EFConst(val) -> emit_float_const(val, irBuilder);
+    | EBinop(op, lhs, rhs) -> buildBinOp(op, lhs, rhs, irBuilder, context);
+    | _ -> null_value();
+  }
+}
+
+untracked fun buildEquation(eq: Equation, irBuilder: IRBuilder, context: LLVMContext): Value {
+  val = buildExpr(eq.rhs, irBuilder, context);
+  eq.lhs match {
+    | LName(name) -> create_variable(name, val, context);
+    | _ -> throw LLVMBackendException();
+  };
+  val
+}
+
+// Lower the AST into an LLVM module.
+untracked fun lower(ast: Fun) : LLVMContext {
+  context = create_context();
+  args = create_arg_list();
+  for (param in ast.sig.params) { 
+    arg = param.type_ match {
+      | TInt() -> create_int_type(context);
+      | TFloat() -> create_float_type(context);
+      | _ -> create_int_type(context); // (FIXME): Handle unkown types.
+    };
+    add_argument(param.name, arg, args);
+  };
+  returnType = ast.sig.returnType match {
+    | TInt() -> create_int_type(context);
+    | TFloat() -> create_float_type(context);
+    | _ -> create_int_type(context); // (FIXME): Handle unkown types.
+  };
+  function = create_function(ast.name, args, returnType, context); 
+  ast.body match {
+    | None() -> throw LLVMBackendException();
+    | Some(body) -> 
+      block = create_basic_block("EntryBlock", function, context);
+      irBuilder = create_ir_builder(block);
+      returnValue = null_value();
+      body.each(eq -> !returnValue = buildEquation(eq, irBuilder, context));
+      build_return(returnValue, irBuilder);
+      release_ir_builder(irBuilder);
+  };
+  release_arg_list(args);
+  context
+}
