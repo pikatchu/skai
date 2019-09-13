@@ -1,0 +1,120 @@
+module TestDasil;
+
+class Config{
+  nbrFuns: Int = 5,
+  maxEqs: Int = 5,
+  maxParams: Int = 5,
+  seed: Int = 23,
+}
+
+mutable class Vars(
+  rand: mutable Random,
+  mutable size: Int = 0,
+  map: mutable Map<Int, String> = mutable Map[],
+) {
+  mutable fun add(name: String): void {
+    this.map![this.size] = name;
+    this.!size = this.size + 1;
+  }
+
+  mutable fun pick(): String {
+    varNbr = this.rand.random(0, this.size);
+    this.map[varNbr];
+  }
+}
+
+class Generator(config: Config = Config{}) {
+  fun program(): Array<Fun> {
+    funs = mutable Vector[];
+    rand = Random::mcreate(this.config.seed);
+    for (i in Range(0, this.config.nbrFuns)) {
+      nbrParams = rand.random(1, max(1, this.config.maxParams));
+      funs.push(this.function(rand, funs, nbrParams, i))
+    };
+    funs.toArray()
+  }
+
+  fun function(
+    rand: mutable Random,
+    funs: readonly Vector<Fun>,
+    nbrParams: Int,
+    funNbr: Int,
+  ): Fun {
+    name = "fun" + funNbr;
+    sig = this.signature(nbrParams);
+    body = this.body(rand, funs, sig);
+    Fun{name, sig, body}
+  }
+
+  fun signature(paramSize: Int): FunSig {
+    params = Array::fillBy(paramSize, this.param);
+    FunSig(params, this.type_())
+  }
+
+  fun body(
+    rand: mutable Random,
+    funs: readonly Vector<Fun>,
+    sig: FunSig,
+  ): FunBody {
+    vars = mutable Vars(rand);
+    for (param in sig.params) {
+      vars.add(param.name);
+    };
+    eqs = mutable Vector<Equation>[];
+    nbrEqs = rand.random(0, this.config.maxEqs);
+    for (i in Range(0, nbrEqs)) {
+      name = "var" + i;
+      eq = this.equation(rand, vars, funs, name);
+      eqs.push(eq);
+    };
+    eqs.push(this.equation(rand, vars, funs, "out"));
+    FBEqs(eqs.toArray())
+  }
+
+  fun equation(
+    rand: mutable Random,
+    vars: mutable Vars,
+    funs: readonly Vector<Fun>,
+    varName: String,
+  ): Equation {
+    nbr = rand.random(0, 100);
+    rhs = if (nbr < 50 || funs.size() <= 1) {
+      this.binopEq(vars);
+    } else {
+      this.callEq(rand, funs, vars);
+    };
+    vars.add(varName);
+    Equation(LName(varName), rhs)
+  }
+
+  fun callEq(
+    rand: mutable Random,
+    funs: readonly Vector<Fun>,
+    vars: mutable Vars,
+  ): Expr {
+    funNbr = rand.random(0, funs.size());
+    fun_ = funs[funNbr];
+    params = Array::fillBy(fun_.sig.params.size(), _ -> EVar(vars.pick()));
+    ECall(fun_.name, params)
+  }
+
+  fun binopEq(vars: mutable Vars): Expr {
+    leftVar = vars.pick();
+    rightVar = vars.pick();
+    EBinop(Plus(), EVar(leftVar), EVar(rightVar))
+  }
+
+  fun param(paramNbr: Int): Param {
+    name = "param" + paramNbr;
+    Param(name, this.type_());
+  }
+
+  fun type_(): Type {
+    TInt()
+  }
+}
+
+fun genProgram(config: Config = Config{}): String {
+  gen = Generator(config);
+  gen.program().map(x -> x.toString()).join("\n");
+}

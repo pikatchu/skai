@@ -1,0 +1,117 @@
+/******************************************************************************
+ * Error handling.
+ *****************************************************************************/
+
+base class Rope<+T> {
+  children =
+  | Empty()
+  | Leaf(T)
+  | Node(Rope<T>, Rope<T>)
+
+  fun +<T2>[T: T2](v: T2): Rope<T2> {
+    Node(this, Leaf(v))
+  }
+
+  fun append<T2>[T: T2](v: Rope<T2>): Rope<T2> {
+    Node(this, v)
+  }
+
+  fun toArray(): Array<T> {
+    acc = mutable Vector[];
+    this.visit(acc);
+    acc.toArray()
+  }
+
+  fun visit<T2>[T: T2](acc: mutable Vector<T2>): void
+  | Empty() -> void
+  | Leaf(x) -> acc.push(x)
+  | Node(r1, r2) ->
+    r1.visit(acc);
+    r2.visit(acc)
+}
+
+module Dasil;
+
+class Errors(errors: Rope<Error>) uses Show {
+  static fun createFromItems(items: Array<Error>): this {
+    acc: Rope<Error> = Empty();
+    for (x in items) {
+      !acc = acc + x
+    };
+    Errors(acc)
+  }
+  fun add(error: Error): this {
+    Errors(this.errors + error)
+  }
+  fun append(errors: Errors): this {
+    Errors(this.errors.append(errors.errors))
+  }
+  fun toString(): String {
+    this.errors.toArray().map(x -> x.toString()).reduce(((x, y) -> x + y), "")
+  }
+}
+
+class ErrMsg(
+  fileName: String,
+  posBegin: Int,
+  posEnd: Int,
+  msg: String,
+) uses Show {
+  fun toString(): String {
+    fname = this.fileName;
+    msg = this.msg;
+    relPosBegin = getRelativePos(fname, this.posBegin);
+    relPosEnd = getRelativePos(fname, this.posEnd);
+    cbegin = relPosBegin.col;
+    line = relPosBegin.line;
+    cend = if (relPosBegin.line == relPosEnd.line) relPosEnd.col else cbegin;
+    `File "${fname}", line ${line}, characters ${cbegin}-${cend}:\n${msg}\n`
+  }
+}
+
+base class Error uses Show {
+  fun toString(): String {
+    this.getMessages().map(x -> x.toString()).join("\n")
+  }
+  fun getMessages(): Array<ErrMsg>;
+}
+
+class DuplicateSymbolInFile(
+  fileName: String,
+  symbolName: String,
+  pos1: Int,
+  pos2: Int,
+) extends Error {
+  fun getMessages(): Array<ErrMsg> {
+    Array[
+      ErrMsg(
+        this.fileName,
+        this.pos2,
+        this.pos2,
+        `Duplicate symbol found in file: ${this.fileName}`,
+      ),
+      ErrMsg(
+        this.fileName,
+        this.pos1,
+        this.pos1,
+        `Previous definition was found here: ${this.fileName}`,
+      ),
+    ]
+  }
+}
+
+class ExpectedChar(fileName: String, pos: Int, char: Char) extends Error {
+  fun getMessages(): Array<ErrMsg> {
+    Array[
+      ErrMsg(this.fileName, this.pos, this.pos, "Expected char: " + this.char),
+    ]
+  }
+}
+
+class ExpectedName(fileName: String, pos: Int) extends Error {
+  fun getMessages(): Array<ErrMsg> {
+    Array[ErrMsg(this.fileName, this.pos, this.pos, "Expected a name")]
+  }
+}
+
+module end;

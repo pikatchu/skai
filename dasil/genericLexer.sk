@@ -52,7 +52,7 @@ value class Token(posBegin: Int, posEnd: Int) {
 
 const EOF: Token = Token(-1, -1);
 
-class .GenericLexer(content: Vector<Char>) {
+class .GenericLexer(content: Array<Char>) {
   fun token(posBegin: Int, size: Int = this.content.size()): Token {
     pos = posBegin.toInt();
     if (pos >= size) {

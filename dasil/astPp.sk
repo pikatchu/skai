@@ -8,8 +8,9 @@ extension class Fun uses Show {
 
   fun bodyToString(): String {
     this.body match {
-    | None() -> ";"
-    | Some(eqs) -> `{\n  ${eqs.join("\n  ")}\n}\n`
+    | FBNone() -> ";"
+    | FBLazy(symbolName) -> String::fromChars(Dasil.getBodyChars(symbolName))
+    | FBEqs(eqs) -> `{\n  ${eqs.join("\n  ")}\n}\n`
     }
   }
 }
@@ -22,15 +23,15 @@ extension class FunSig uses Show {
 
 extension class Param uses Show {
   fun toString(): String {
-    `${this.name} : ${this.type_}`
+    `${this.name}: ${this.type_}`
   }
 }
 
 extension base class Type uses Show {
   fun toString(): String {
     this match {
-    | TInt() -> "int"
-    | TFloat() -> "float"
+    | TInt() -> "Int"
+    | TFloat() -> "Float"
     | TArray(ty) -> `[${ty.toString()}]`
     }
   }
