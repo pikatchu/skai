@@ -1,0 +1,109 @@
+module alias AF = ArrayFire;
+
+mutable class Env(
+  data: mutable Map<String, AF.Array> = mutable Map[],
+  mutable currentId: Int = 0,
+) {
+  mutable private fun genSym(): String {
+    this.!currentId = this.currentId + 1;
+    "w_" + this.currentId.toString()
+  }
+
+  mutable fun parameter(weights: AF.Array): Tensor {
+    name = this.genSym();
+    this.data![name] = weights;
+    Tensor.Input(name)
+  }
+}
+
+mutable base class Model {
+  children =
+  | Sigmoid()
+  | Seq(Vector<Model>)
+  | Linear(Int, Int)
+
+  untracked fun instantiate(env: mutable Env, input: Tensor): Tensor
+  | Sigmoid() -> Tensor.Sigmoid(input)
+  | Linear(n, m) ->
+    weights = AF.randu(n, m);
+    Tensor.MatMul(Tensor.Transpose(env.parameter(weights)), input);
+  | Seq(v) ->
+    acc = input;
+    v.each(x -> !acc = x.instantiate(env, acc));
+    acc
+}
+
+untracked fun makeMLP(dims: Vector<Int>): Model {
+  seq = mutable Vector<Model>[];
+  for (i in Range(0, dims.size() - 1)) {
+    xi0 = dims[i];
+    xi1 = dims[i + 1];
+    seq.push(Linear(xi0, xi1));
+    seq.push(Sigmoid());
+  };
+  Seq(freeze(seq))
+}
+
+base class Loss {
+  children =
+  | MSELoss()
+
+  fun compute(yiHat: Tensor, yi: Tensor): Tensor
+  | MSELoss() -> res = yiHat - yi;
+    Tensor.MatMul(Tensor.Transpose(res), res)
+}
+
+base class Optimizer {
+  children =
+  | SGD(lr: Float)
+
+  untracked fun step(loss: Tensor, env: mutable Env,
+                     data: Array<(AF.Array, AF.Array)>): void
+  | SGD(lr) -> {
+    data.each(d -> {
+      (xi, yi) = d;
+      env.data!["input"] = xi;
+      env.data!["output"] = yi;
+      grads = loss.backward(Tensor.Constant(1.0, 1));
+      fenv = freeze(env.data);
+      fenv.each((k, w) -> {
+        // TODO: Distinguish between inputs/constants/parameters at Tensor level.
+        if (k != "input" && k != "output") {
+          env.data![k] = w - AF.mult_fa(lr, grads[k].eval(fenv));
+        };
+      })
+    })
+  }
+}
+
+untracked fun buildSimpleExample(): void {
+  data = Array[
+    (AF.randu(3), AF.randu(4)),
+    (AF.randu(3), AF.randu(4)),
+    (AF.randu(3), AF.randu(4)),
+    (AF.randu(3), AF.randu(4)),
+    (AF.randu(3), AF.randu(4)),
+    (AF.randu(3), AF.randu(4)),
+    (AF.randu(3), AF.randu(4)),
+    (AF.randu(3), AF.randu(4)),
+    (AF.randu(3), AF.randu(4)),
+    (AF.randu(3), AF.randu(4))
+  ];
+
+  env = mutable Env();
+  model = makeMLP(Vector[3, 4]).instantiate(env, Tensor.Input("input"));
+  loss = MSELoss().compute(model, Tensor.Input("output"));
+  opt = SGD(0.1);
+
+  for (epoch in Range(0, 1000)) {
+    avg_loss = data.map(d -> {
+      (xi, yi) = d;
+      env.data!["input"] = xi;
+      env.data!["output"] = yi;
+      loss.eval(freeze(env.data)).scalar()
+    }).sumFloat() / data.size().toFloat();
+    print_string(`Epoch #${epoch}: \tAverage loss: ${avg_loss}`);
+
+    opt.step(loss, env, data);
+  };
+}

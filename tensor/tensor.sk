@@ -2,7 +2,7 @@ module alias AF = ArrayFire;
 
 module Tensor;
 
-type Env = Map<String, ArrayFire.Array>;
+type Env = Map<String, AF.Array>;
 
 base class OperationKind {
   children =
@@ -47,7 +47,14 @@ base class .Tensor {
   | Operation(OperationKind, Tensor, Tensor)
   | Negate(Tensor)
   | Reciprocal(Tensor)
+  | Exp(Tensor)
+  | Sigmoid(Tensor)
+  | MatMul(Tensor, Tensor)
   | Bind(String, Tensor)
+  | Transpose(Tensor)
+  | Sin(Tensor)
+  | Cos(Tensor)
+  | Tan(Tensor)
 
   overridable fun *(rhs: Tensor): Tensor {
     rhs match {
@@ -85,6 +92,67 @@ base class .Tensor {
     Reciprocal(this)
   }
 
+  fun dims(env: Env): Vector<.Int>
+  | Int(_tensor) -> invariant_violation("Case not handled yet")
+  | Input(name) -> if (env.containsKey(name)) {
+      v = mutable Vector[];
+      for (i in Range(0, AF.numDims(env[name]))) {
+        v.push(AF.getDim(env[name], i))
+      };
+      freeze(v)
+    } else {
+      invariant_violation(`Unknown input ${name}`)
+    }
+  | Constant(_, n) -> Vector[n]
+  | Bind(_, tensor)
+  | ConstantOfInt(_, tensor)
+  | Negate(tensor)
+  | Reciprocal(tensor)
+  | Sin(tensor)
+  | Cos(tensor)
+  | Tan(tensor)
+  | Exp(tensor)
+  | Sigmoid(tensor) -> tensor.dims(env)
+  | Transpose(tensor) -> d = tensor.dims(env);
+  if (d.size() == 1) {
+    if (d[0] == 1) {
+      Vector[1]
+    } else {
+      Vector[1, d[0]]
+    }
+  } else if(d.size() == 2) {
+    if (d[0] == 1) {
+      Vector[d[1]]
+    } else {
+      Vector[d[1], d[0]]
+    }
+  } else {
+    invariant_violation("Cannot transpose higher order tensors.")
+  }
+  | MatMul(u, v) -> du = u.dims(env); dv = v.dims(env);
+  if (du.size() > 2 && dv.size() > 2) {
+    invariant_violation("Cannot matmul higher order tensors.")
+  };
+  if ((du.size() == 1 && dv[0] != 1) || (du.size() >= 2 && du[1] != dv[0])) {
+    debug(u);
+    debug(v);
+    invariant_violation(`Dimensions mismatch: ${du} vs ${dv}`)
+  };
+  if (dv.size() >= 2) {
+    Vector[du[0], dv[1]]
+  } else {
+    Vector[du[0]]
+  }
+  | Operation(_, lhs, rhs) -> lhsDims = lhs.dims(env); rhsDims = rhs.dims(env);
+  if (lhsDims != rhsDims) {
+    debug(lhs);
+    debug(rhs);
+    invariant_violation(`Dimensions mismatch: ${lhsDims} vs ${rhsDims}`)
+  } else {
+    lhsDims
+  }
+
+
   static fun addGradient(
     name: String,
     gradient: Tensor,
@@ -114,7 +182,7 @@ base class .Tensor {
       rhsRec = rhs.reciprocal();
       lhsGrad = gradient * rhsRec;
       lhs.buildGradients(lhsGrad, acc);
-      rhs.buildGradients(lhsGrad * lhs.negate() * rhsRec, acc)
+      rhs.buildGradients(-lhsGrad * lhs * rhsRec, acc)
     | Add() ->
       lhs.buildGradients(gradient, acc);
       rhs.buildGradients(gradient, acc)
@@ -123,9 +191,19 @@ base class .Tensor {
       rhs.buildGradients(-gradient, acc)
     }
   | Negate(tensor) -> tensor.buildGradients(-gradient, acc)
-  | Reciprocal(tensor) ->
-    res = tensor.reciprocal();
-    tensor.buildGradients(gradient.negate() * res * res, acc)
+  | Reciprocal(tensor) -> res = tensor.reciprocal();
+    tensor.buildGradients(-gradient * res * res, acc)
+  | Sin(tensor) -> tensor.buildGradients(gradient * Cos(tensor), acc)
+  | Cos(tensor) -> tensor.buildGradients(-gradient * Sin(tensor), acc)
+  | Tan(tensor) -> tensor.buildGradients(
+      gradient * Reciprocal(Cos(tensor) * Cos(tensor)), acc)
+  | Exp(tensor) -> tensor.buildGradients(gradient * Exp(tensor), acc)
+  | Sigmoid(tensor) -> res = Reciprocal(ConstantOfInt(1, tensor) + Exp(-tensor));
+    tensor.buildGradients(gradient * res * (ConstantOfInt(1, res) - res), acc)
+  | MatMul(lhs, rhs) ->
+    lhs.buildGradients(MatMul(gradient, Transpose(rhs)), acc); // transpose lhs/rhs?
+    rhs.buildGradients(MatMul(Transpose(lhs), gradient), acc)
+  | Transpose(tensor) -> tensor.buildGradients(Transpose(gradient), acc)
 
   fun backward(gradient: Tensor): Map<String, Tensor> {
     acc = mutable Map[];
@@ -158,6 +236,14 @@ base class .Tensor {
       }
     | Negate(v) -> AF.negate(await v.asyncEval(env))
     | Reciprocal(v) -> AF.div_fa(1.0, await v.asyncEval(env))
+    | Sin(v) -> AF.sin(await v.asyncEval(env))
+    | Cos(v) -> AF.cos(await v.asyncEval(env))
+    | Tan(v) -> AF.tan(await v.asyncEval(env))
+    | Exp(v) -> AF.exp(await v.asyncEval(env))
+    | Sigmoid(v) -> res = await v.asyncEval(env);
+      AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-res)))
+    | MatMul(u, v) -> AF.matmul(await u.asyncEval(env), await v.asyncEval(env))
+    | Transpose(v) -> AF.transpose(await v.asyncEval(env))
     }
   }
 
@@ -166,101 +252,119 @@ base class .Tensor {
   }
 }
 
-fun dummySigmoid(input: Tensor): Tensor {
-  input
+module end;
+
+
+module Test;
+
+extension class TestCase {
+  mutable fun expect_array_equal(u: AF.Array, v: AF.Array): void {
+    this.expect(AF.allTrue(AF.lt_av(AF.abs(u - v), 1E-5)),
+                "Arrays not equal")
+  }
 }
 
 module end;
 
+
 module TestTensor;
-
-fun verify(v: AF.Array): void {
-  res = AF.allTrue(AF.lt_av(AF.abs(v), 1E-5));
-  if (res) print_string("PASSED") else print_string("FAILED")
-}
-
-fun test_multiply(env: Tensor.Env): void {
-  x = Tensor.Input("x");
-  y = x * x;
-  dy = Tensor.Constant(1.0, 5);
-  grads = y.backward(dy);
-  dx = grads["x"];
-  arr = dx.eval(env) - AF.mult_ia(2, x.eval(env));
-  verify(arr);
-}
-
-fun test_multiply_add(env: Tensor.Env): void {
-  x = Tensor.Input("x");
-  y = Tensor.Input("y");
-  z = x * x + x * y + y * y;
-  dz = Tensor.Constant(1.0, 5);
-  grads = z.backward(dz);
-  dx = grads["x"];
-  dy = grads["y"];
-  verify(dx.eval(env) - AF.mult_ia(2, x.eval(env)) - y.eval(env));
-  verify(dy.eval(env) - AF.mult_ia(2, y.eval(env)) - x.eval(env));
-}
-
-fun test_multiply_sub(env: Tensor.Env): void {
-  x = Tensor.Input("x");
-  y = Tensor.Input("y");
-  z = x * x - x * y;
-  dz = Tensor.Constant(1.0, 5);
-  grads = z.backward(dz);
-  dx = grads["x"];
-  dy = grads["y"];
-  verify(dx.eval(env) - (AF.mult_ia(2, x.eval(env)) - y.eval(env)));
-  verify(dy.eval(env) - (-x.eval(env)));
-}
-
-fun test_divide_add(env: Tensor.Env): void {
-  x = Tensor.Input("x");
-  y = Tensor.Input("y");
-  z = x + x / y + y;
-  dz = Tensor.Constant(1.0, 5);
-  grads = z.backward(dz);
-  dx = grads["x"];
-  dy = grads["y"];
-  verify(dx.eval(env) - (AF.plus_fa(1.0, AF.div_fa(1.0, y.eval(env)))));
-  verify(
-    dy.eval(env) -
-      (AF.minus_fa(1.0, (x.eval(env) / (y.eval(env) * y.eval(env))))),
-  );
-}
-
-fun test_multiply_add_scalar(env: Tensor.Env): void {
-  x = Tensor.Input("x");
-  y = Tensor.Input("y");
-  z = x * Tensor.Int(2) + x * y + y;
-  dz = Tensor.Constant(1.0, 5);
-  grads = z.backward(dz);
-  dx = grads["x"];
-  dy = grads["y"];
-  verify(dx.eval(env) - (AF.plus_fa(2.0, y.eval(env))));
-  verify(dy.eval(env) - (AF.plus_fa(1.0, x.eval(env))));
-}
-
-fun test_bind(env: Tensor.Env): void {
-  x = Tensor.Input("x");
-  y = Tensor.Input("y");
-  z = x * Tensor.Int(2) + Tensor.Bind("myVar", x * y) + y;
-  dz = Tensor.Constant(1.0, 5);
-  grads = z.backward(dz);
-  dx = grads["x"];
-  dy = grads["y"];
-  AF.print(grads["myVar"].eval(env));
-  verify(dx.eval(env) - (AF.plus_fa(2.0, y.eval(env))));
-  verify(dy.eval(env) - (AF.plus_fa(1.0, x.eval(env))));
-}
 
 untracked fun testAll(): void {
   env = Map["x" => AF.randu(5), "y" => AF.randu(5)];
-  test_multiply(env);
-  test_multiply_add(env);
-  test_multiply_sub(env);
-  test_divide_add(env);
-  test_multiply_add_scalar(env);
-  test_bind(env);
+
+  Test.group("Tensor.backward")
+  .test("multiply", t -> {
+    x = Tensor.Input("x");
+    y = x * x;
+    dy = Tensor.Constant(1.0, 5);
+    grads = y.backward(dy);
+    dx = grads["x"];
+
+    t.expect_array_equal(dx.eval(env), AF.mult_ia(2, x.eval(env)))
+  })
+  .test("test_multiply_add", t -> {
+    x = Tensor.Input("x");
+    y = Tensor.Input("y");
+    z = x * x + x * y + y * y;
+    dz = Tensor.Constant(1.0, 5);
+    grads = z.backward(dz);
+    dx = grads["x"];
+    dy = grads["y"];
+
+    t.expect_array_equal(dx.eval(env), AF.mult_ia(2, x.eval(env)) + y.eval(env));
+    t.expect_array_equal(dy.eval(env), AF.mult_ia(2, y.eval(env)) + x.eval(env))
+  })
+  .test("test_multiply_sub", t -> {
+    x = Tensor.Input("x");
+    y = Tensor.Input("y");
+    z = x * x - x * y;
+    dz = Tensor.Constant(1.0, 5);
+    grads = z.backward(dz);
+    dx = grads["x"];
+    dy = grads["y"];
+
+    t.expect_array_equal(dx.eval(env), AF.mult_ia(2, x.eval(env)) - y.eval(env));
+    t.expect_array_equal(dy.eval(env), -x.eval(env))
+  })
+  .test("test_divide_add", t -> {
+    x = Tensor.Input("x");
+    y = Tensor.Input("y");
+    z = x + x / y + y;
+    dz = Tensor.Constant(1.0, 5);
+    grads = z.backward(dz);
+    dx = grads["x"];
+    dy = grads["y"];
+
+    t.expect_array_equal(dx.eval(env), AF.plus_fa(1.0, AF.div_fa(1.0, y.eval(env))));
+    t.expect_array_equal(
+      dy.eval(env),
+      AF.minus_fa(1.0, (x.eval(env) / (y.eval(env) * y.eval(env)))),
+    )
+  })
+  .test("test_multiply_add_scalar", t -> {
+    x = Tensor.Input("x");
+    y = Tensor.Input("y");
+    z = x * Tensor.Int(2) + x * y + y;
+    dz = Tensor.Constant(1.0, 5);
+    grads = z.backward(dz);
+    dx = grads["x"];
+    dy = grads["y"];
+
+    t.expect_array_equal(dx.eval(env), AF.plus_fa(2.0, y.eval(env)));
+    t.expect_array_equal(dy.eval(env), AF.plus_fa(1.0, x.eval(env)))
+  })
+  .test("test_bind", t -> {
+    x = Tensor.Input("x");
+    y = Tensor.Input("y");
+    z = x * Tensor.Int(2) + Tensor.Bind("myVar", x * y) + y;
+    dz = Tensor.Constant(1.0, 5);
+    grads = z.backward(dz);
+    dx = grads["x"];
+    dy = grads["y"];
+    AF.print(grads["myVar"].eval(env));
+
+    t.expect_array_equal(dx.eval(env), AF.plus_fa(2.0, y.eval(env)));
+    t.expect_array_equal(dy.eval(env), AF.plus_fa(1.0, x.eval(env)))
+  })
+  .test("test_exp", t -> {
+    x = Tensor.Input("x");
+    y = Tensor.Exp(x);
+    dy = Tensor.Constant(1.0, 5);
+    grads = y.backward(dy);
+    dx = grads["x"];
+
+    t.expect_array_equal(dx.eval(env), AF.exp(x.eval(env)))
+  })
+  .test("test_sigmoid", t -> {
+    x = Tensor.Input("x");
+    y = Tensor.Sigmoid(x);
+    dy = Tensor.Constant(1.0, 5);
+    grads = y.backward(dy);
+    dx = grads["x"];
+
+    sigx = AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-x.eval(env))));
+    t.expect_array_equal(dx.eval(env), sigx * ((AF.minus_fa(1.0, sigx))))
+  }).run()
 }
 
 module end;

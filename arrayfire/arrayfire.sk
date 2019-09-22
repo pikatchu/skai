@@ -27,10 +27,24 @@ native class Array {
   fun negate(): Array {
     negate(this)
   }
+
+  fun scalar(): Float {
+    scalar(this)
+  }
 }
+
+// TODO: This assumes float arrays.
+@cpp_extern
+native fun scalar(Array): Float;
 
 @cpp_extern
 native fun getType(Array): Type;
+
+@cpp_extern
+native fun numDims(Array): Int;
+
+@cpp_extern
+native fun getDim(Array, Int): Int;
 
 @cpp_extern
 native fun getDims(Array): Dims;
@@ -90,9 +104,27 @@ native fun constant_one(Array): Array;
 native fun print(Array): void;
 
 untracked @cpp_extern
-native fun randu(Int): Array;
+native fun randu(Int, Int = 0, Int = 0, Int = 0): Array;
 
 @cpp_extern
 native fun eval(Array): void;
+
+@cpp_extern
+native fun exp(Array): Array;
+
+@cpp_extern
+native fun sin(Array): Array;
+
+@cpp_extern
+native fun cos(Array): Array;
+
+@cpp_extern
+native fun tan(Array): Array;
+
+@cpp_extern
+native fun matmul(Array, Array): Array;
+
+@cpp_extern
+native fun transpose(Array): Array;
 
 module end;

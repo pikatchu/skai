@@ -1,0 +1,56 @@
+module Test;
+
+mutable class TestCase(
+  name: String,
+  test: (mutable TestCase) -> void,
+  errors: mutable Vector<String> = mutable Vector[]
+) {
+  mutable fun run(): void {
+    print_raw(`>>> ${this.name}: `);
+
+    this.test(this);
+
+    if (this.errors.size() == 0) {
+      print_string("PASSED")
+    } else {
+      print_string("FAILED");
+      this.errors.each(e -> {
+        print_string(`>>>>> ${e}`)
+      })
+    }
+  }
+
+  mutable fun expect(cond: Bool, descr: String = ""): void {
+    if (!cond) {
+      this.errors.push(`Invariant violation: ${descr}`)
+    };
+  }
+}
+
+mutable class TestGroup(
+  group_name: String,
+  tests: mutable Vector<mutable TestCase> = mutable Vector[]
+) {
+  mutable fun test(name: String, f: (mutable TestCase) -> void): mutable TestGroup {
+    this.tests.push(mutable TestCase(name, f));
+
+    this
+  }
+
+  mutable fun run(): void {
+    print_string(`> ${this.group_name}`);
+    this.tests.each(t -> {
+      t.run()
+    });
+  }
+}
+
+fun test(name: String, test: (mutable TestCase) -> void): mutable TestCase {
+  mutable TestCase(name, test)
+}
+
+fun group(name: String): mutable TestGroup {
+  mutable TestGroup(name)
+}
+
+module end;
