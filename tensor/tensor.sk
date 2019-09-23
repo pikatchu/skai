@@ -41,7 +41,8 @@ class Int(value: .Int) extends Tensor {
 
 base class .Tensor {
   children =
-  | Input(String)
+  | Param(String)
+  | Input(AF.Array)
   | Constant(Float, .Int)
   | ConstantOfInt(.Int, Tensor)
   | Operation(OperationKind, Tensor, Tensor)
@@ -94,15 +95,16 @@ base class .Tensor {
 
   fun dims(env: Env): Vector<.Int>
   | Int(_tensor) -> invariant_violation("Case not handled yet")
-  | Input(name) -> if (env.containsKey(name)) {
-      v = mutable Vector[];
-      for (i in Range(0, AF.numDims(env[name]))) {
-        v.push(AF.getDim(env[name], i))
-      };
-      freeze(v)
+  | Param(name) -> if (env.containsKey(name)) {
+      Input(env[name]).dims(env)
     } else {
       invariant_violation(`Unknown input ${name}`)
     }
+  | Input(arr) -> v = mutable Vector[];
+    for (i in Range(0, AF.numDims(arr))) {
+      v.push(AF.getDim(arr, i))
+    };
+    freeze(v)
   | Constant(_, n) -> Vector[n]
   | Bind(_, tensor)
   | ConstantOfInt(_, tensor)
@@ -114,43 +116,43 @@ base class .Tensor {
   | Exp(tensor)
   | Sigmoid(tensor) -> tensor.dims(env)
   | Transpose(tensor) -> d = tensor.dims(env);
-  if (d.size() == 1) {
-    if (d[0] == 1) {
-      Vector[1]
+    if (d.size() == 1) {
+      if (d[0] == 1) {
+        Vector[1]
+      } else {
+        Vector[1, d[0]]
+      }
+    } else if(d.size() == 2) {
+      if (d[0] == 1) {
+        Vector[d[1]]
+      } else {
+        Vector[d[1], d[0]]
+      }
     } else {
-      Vector[1, d[0]]
+      invariant_violation("Cannot transpose higher order tensors.")
     }
-  } else if(d.size() == 2) {
-    if (d[0] == 1) {
-      Vector[d[1]]
-    } else {
-      Vector[d[1], d[0]]
-    }
-  } else {
-    invariant_violation("Cannot transpose higher order tensors.")
-  }
   | MatMul(u, v) -> du = u.dims(env); dv = v.dims(env);
-  if (du.size() > 2 && dv.size() > 2) {
-    invariant_violation("Cannot matmul higher order tensors.")
-  };
-  if ((du.size() == 1 && dv[0] != 1) || (du.size() >= 2 && du[1] != dv[0])) {
-    debug(u);
-    debug(v);
-    invariant_violation(`Dimensions mismatch: ${du} vs ${dv}`)
-  };
-  if (dv.size() >= 2) {
-    Vector[du[0], dv[1]]
-  } else {
-    Vector[du[0]]
-  }
+    if (du.size() > 2 && dv.size() > 2) {
+      invariant_violation("Cannot matmul higher order tensors.")
+    };
+    if ((du.size() == 1 && dv[0] != 1) || (du.size() >= 2 && du[1] != dv[0])) {
+      debug(u);
+      debug(v);
+      invariant_violation(`Dimensions mismatch: ${du} vs ${dv}`)
+    };
+    if (dv.size() >= 2) {
+      Vector[du[0], dv[1]]
+    } else {
+      Vector[du[0]]
+    }
   | Operation(_, lhs, rhs) -> lhsDims = lhs.dims(env); rhsDims = rhs.dims(env);
-  if (lhsDims != rhsDims) {
-    debug(lhs);
-    debug(rhs);
-    invariant_violation(`Dimensions mismatch: ${lhsDims} vs ${rhsDims}`)
-  } else {
-    lhsDims
-  }
+    if (lhsDims != rhsDims) {
+      debug(lhs);
+      debug(rhs);
+      invariant_violation(`Dimensions mismatch: ${lhsDims} vs ${rhsDims}`)
+    } else {
+      lhsDims
+    }
 
 
   static fun addGradient(
@@ -167,9 +169,10 @@ base class .Tensor {
   ): void
   | Int _
   | Constant _
-  | ConstantOfInt _ ->
+  | ConstantOfInt _
+  | Input(_) ->
     void
-  | Input(name) -> static::addGradient(name, gradient, acc)
+  | Param(name) -> static::addGradient(name, gradient, acc)
   | Bind(name, tensor) ->
     static::addGradient(name, gradient, acc);
     tensor.buildGradients(gradient, acc)
@@ -215,12 +218,13 @@ base class .Tensor {
   memoized async fun asyncEval(env: Env): ^AF.Array {
     this match {
     | Int _ -> invariant_violation("Bad usage of Tensor.Int")
-    | Input(n) ->
+    | Param(n) ->
       if (!env.containsKey(n)) {
         invariant_violation(`Environment does not define the input ${n}`)
       } else {
         env[n]
       }
+    | Input(arr) -> arr
     | Bind(_, tensor) -> await tensor.asyncEval(env)
     | ConstantOfInt(value, tensor) ->
       AF.constant_of_int(value, await tensor.asyncEval(env))
@@ -274,7 +278,7 @@ untracked fun testAll(): void {
 
   Test.group("Tensor.backward")
   .test("multiply", t -> {
-    x = Tensor.Input("x");
+    x = Tensor.Param("x");
     y = x * x;
     dy = Tensor.Constant(1.0, 5);
     grads = y.backward(dy);
@@ -283,8 +287,8 @@ untracked fun testAll(): void {
     t.expect_array_equal(dx.eval(env), AF.mult_ia(2, x.eval(env)))
   })
   .test("test_multiply_add", t -> {
-    x = Tensor.Input("x");
-    y = Tensor.Input("y");
+    x = Tensor.Param("x");
+    y = Tensor.Param("y");
     z = x * x + x * y + y * y;
     dz = Tensor.Constant(1.0, 5);
     grads = z.backward(dz);
@@ -295,8 +299,8 @@ untracked fun testAll(): void {
     t.expect_array_equal(dy.eval(env), AF.mult_ia(2, y.eval(env)) + x.eval(env))
   })
   .test("test_multiply_sub", t -> {
-    x = Tensor.Input("x");
-    y = Tensor.Input("y");
+    x = Tensor.Param("x");
+    y = Tensor.Param("y");
     z = x * x - x * y;
     dz = Tensor.Constant(1.0, 5);
     grads = z.backward(dz);
@@ -307,8 +311,8 @@ untracked fun testAll(): void {
     t.expect_array_equal(dy.eval(env), -x.eval(env))
   })
   .test("test_divide_add", t -> {
-    x = Tensor.Input("x");
-    y = Tensor.Input("y");
+    x = Tensor.Param("x");
+    y = Tensor.Param("y");
     z = x + x / y + y;
     dz = Tensor.Constant(1.0, 5);
     grads = z.backward(dz);
@@ -322,8 +326,8 @@ untracked fun testAll(): void {
     )
   })
   .test("test_multiply_add_scalar", t -> {
-    x = Tensor.Input("x");
-    y = Tensor.Input("y");
+    x = Tensor.Param("x");
+    y = Tensor.Param("y");
     z = x * Tensor.Int(2) + x * y + y;
     dz = Tensor.Constant(1.0, 5);
     grads = z.backward(dz);
@@ -334,8 +338,8 @@ untracked fun testAll(): void {
     t.expect_array_equal(dy.eval(env), AF.plus_fa(1.0, x.eval(env)))
   })
   .test("test_bind", t -> {
-    x = Tensor.Input("x");
-    y = Tensor.Input("y");
+    x = Tensor.Param("x");
+    y = Tensor.Param("y");
     z = x * Tensor.Int(2) + Tensor.Bind("myVar", x * y) + y;
     dz = Tensor.Constant(1.0, 5);
     grads = z.backward(dz);
@@ -347,7 +351,7 @@ untracked fun testAll(): void {
     t.expect_array_equal(dy.eval(env), AF.plus_fa(1.0, x.eval(env)))
   })
   .test("test_exp", t -> {
-    x = Tensor.Input("x");
+    x = Tensor.Param("x");
     y = Tensor.Exp(x);
     dy = Tensor.Constant(1.0, 5);
     grads = y.backward(dy);
@@ -356,7 +360,7 @@ untracked fun testAll(): void {
     t.expect_array_equal(dx.eval(env), AF.exp(x.eval(env)))
   })
   .test("test_sigmoid", t -> {
-    x = Tensor.Input("x");
+    x = Tensor.Param("x");
     y = Tensor.Sigmoid(x);
     dy = Tensor.Constant(1.0, 5);
     grads = y.backward(dy);
