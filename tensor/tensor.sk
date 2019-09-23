@@ -170,7 +170,7 @@ base class .Tensor {
   | Int _
   | Constant _
   | ConstantOfInt _
-  | Input(_) ->
+  | Input _ ->
     void
   | Param(name) -> static::addGradient(name, gradient, acc)
   | Bind(name, tensor) ->
@@ -201,10 +201,10 @@ base class .Tensor {
   | Tan(tensor) -> tensor.buildGradients(
       gradient * Reciprocal(Cos(tensor) * Cos(tensor)), acc)
   | Exp(tensor) -> tensor.buildGradients(gradient * Exp(tensor), acc)
-  | Sigmoid(tensor) -> res = Reciprocal(ConstantOfInt(1, tensor) + Exp(-tensor));
-    tensor.buildGradients(gradient * res * (ConstantOfInt(1, res) - res), acc)
+  | Sigmoid(tensor) -> res = Reciprocal(Int(1) + Exp(-tensor));
+    tensor.buildGradients(gradient * res * (Int(1) - res), acc)
   | MatMul(lhs, rhs) ->
-    lhs.buildGradients(MatMul(gradient, Transpose(rhs)), acc); // transpose lhs/rhs?
+    lhs.buildGradients(MatMul(gradient, Transpose(rhs)), acc);
     rhs.buildGradients(MatMul(Transpose(lhs), gradient), acc)
   | Transpose(tensor) -> tensor.buildGradients(Transpose(gradient), acc)
 
@@ -367,7 +367,14 @@ untracked fun testAll(): void {
     dx = grads["x"];
 
     sigx = AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-x.eval(env))));
-    t.expect_array_equal(dx.eval(env), sigx * ((AF.minus_fa(1.0, sigx))))
+    t.expect_array_equal(dx.eval(env), sigx * ((AF.minus_fa(1.0, sigx))));
+
+
+    z = Tensor.Reciprocal(Tensor.Constant(1.0, 5) + Tensor.Exp(-x));
+    grads2 = z.backward(dy);
+    dx2 = grads2["x"];
+
+    t.expect_array_equal(dx2.eval(env), sigx * ((AF.minus_fa(1.0, sigx))))
   }).run()
 }
 

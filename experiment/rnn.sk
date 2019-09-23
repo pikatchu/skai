@@ -1,0 +1,37 @@
+module alias AF = ArrayFire;
+
+untracked fun buildRnn(): void {
+  rand = Random::mcreate(1337);
+  n = 10;
+  d = 4;
+
+  data = Range(0, 100).map(_ -> {
+    l = rand.random(1, 12);
+    (
+      Range(0, l).map(_ -> { Tensor.Input(AF.randu(d)) }),
+      Tensor.Input(AF.randu(n))
+    )
+  });
+
+  params = mutable Env();
+  r = params.parameter(AF.randu(n, n), "R");
+  w = params.parameter(AF.randu(n, d), "W");
+
+  lr = 0.5;
+  for (di in data) {
+    (xis, yi) = di;
+    h: Tensor = Tensor.Constant(1.0, n);
+    for (xi in xis) {
+      !h = Tensor.MatMul(w, xi) + Tensor.MatMul(r, h)
+    };
+
+    loss = Loss.mse(h, yi);
+
+    grads = loss.backward(Tensor.Constant(1.0, 1));
+
+    rgrad = grads["R"].eval(freeze(params.data));
+    wgrad = grads["W"].eval(freeze(params.data));
+    params.data!["R"] = params.data["R"] + AF.mult_fa(lr, rgrad);
+    params.data!["W"] = params.data["W"] + AF.mult_fa(lr, wgrad);
+  };
+}

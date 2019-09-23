@@ -8,20 +8,20 @@ native class Type
 
 @cpp_extern
 native class Array {
-  fun -(lhs: Array): Array {
-    minus_aa(this, lhs)
+  fun -(rhs: Array): Array {
+    minus_aa(this, rhs)
   }
 
-  fun +(lhs: Array): Array {
-    plus_aa(this, lhs)
+  fun +(rhs: Array): Array {
+    plus_aa(this, rhs)
   }
 
-  fun /(lhs: Array): Array {
-    div_aa(this, lhs)
+  fun /(rhs: Array): Array {
+    div_aa(this, rhs)
   }
 
-  fun *(lhs: Array): Array {
-    mult_aa(this, lhs)
+  fun *(rhs: Array): Array {
+    mult_aa(this, rhs)
   }
 
   fun negate(): Array {
@@ -30,6 +30,12 @@ native class Array {
 
   fun scalar(): Float {
     scalar(this)
+  }
+}
+
+class Const(value: Float) {
+  fun *(rhs: Array): Array {
+    mult_fa(this.value, rhs)
   }
 }
 

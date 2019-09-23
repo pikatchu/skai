@@ -1,5 +1,17 @@
 module alias AF = ArrayFire;
 
+untracked fun makeMLP(dims: Vector<Int>, env: mutable Env): Model {
+  seq = mutable Vector<Model>[];
+  for (i in Range(0, dims.size() - 1)) {
+    w_i = env.parameter(AF.randu(dims[i], dims[i+1]), `w_${i}`);
+
+    seq.push(Linear(w_i));
+    seq.push(Sigmoid());
+  };
+  Seq(freeze(seq))
+}
+
+
 mutable class Env(
   data: mutable Map<String, AF.Array> = mutable Map[],
   mutable currentId: Int = 0,
@@ -18,6 +30,13 @@ mutable class Env(
     this.data![n] = weights;
     Tensor.Param(n)
   }
+
+  readonly fun print(): void {
+    for ((k, w) in this.data.items()) {
+      print_string(k);
+      AF.print(w);
+    }
+  }
 }
 
 mutable base class Model {
@@ -26,7 +45,7 @@ mutable base class Model {
   | Seq(Vector<Model>)
   | Linear(Tensor)
 
-  untracked fun forward(input: Tensor): Tensor
+  fun forward(input: Tensor): Tensor
   | Sigmoid() -> Tensor.Sigmoid(input)
   | Linear(w) ->
     Tensor.MatMul(Tensor.Transpose(w), input)
@@ -36,98 +55,75 @@ mutable base class Model {
     acc
 }
 
-untracked fun makeMLP(dims: Vector<Int>, env: mutable Env): Model {
-  seq = mutable Vector<Model>[];
-  for (i in Range(0, dims.size() - 1)) {
-    w_i = env.parameter(AF.randu(dims[i], dims[i+1]), `w_${i}`);
-
-    seq.push(Linear(w_i));
-    seq.push(Sigmoid());
-  };
-  Seq(freeze(seq))
-}
-
-base class Loss {
-  children =
-  | MSELoss()
-
-  fun compute(yiHat: Tensor, yi: Tensor): Tensor
-  | MSELoss() -> res = yiHat - yi;
-    Tensor.MatMul(Tensor.Transpose(res), res)
-}
-
 base class Optimizer {
   children =
-  | SGD(lr: Float)
+  | SGD{lr: Float}
 
-  untracked fun step(loss: Tensor, env: mutable Env,
-                     data: Array<(AF.Array, AF.Array)>): void
-  | SGD(lr) -> {
+  untracked fun step(loss_fun: (Tensor, Tensor) -> Tensor,
+                   data: Sequence<(AF.Array, AF.Array)>,
+                   env: mutable Env): void
+  | SGD{lr} ->
     all_grads = mutable Map<String, AF.Array>[];
-    data.each(d -> {
+    for (d in data) {
       (xi, yi) = d;
-      env.data!["input"] = xi;
-      env.data!["output"] = yi;
+      loss = loss_fun(Tensor.Input(xi), Tensor.Input(yi));
       grads = loss.backward(Tensor.Constant(1.0, 1));
       fenv = freeze(env.data);
-      fenv.each((k, _) -> {
-        // TODO: Distinguish between inputs/constants/parameters at Tensor level.
-        if (k != "input" && k != "output") {
-          if (all_grads.containsKey(k)) {
-            all_grads![k] = all_grads[k] + grads[k].eval(fenv);
-          } else {
-            all_grads![k] = grads[k].eval(fenv)
-          }
-        };
-      })
-    });
-    all_grads.each((k, w) -> {
-      env.data![k] = env.data[k] - AF.mult_fa(lr / all_grads.size().toFloat(), w)
-    });
+      for ((k, w) in grads.items()) {
+        if (all_grads.containsKey(k)) {
+          all_grads![k] = all_grads[k] + w.eval(fenv);
+        } else {
+          all_grads![k] = w.eval(fenv)
+        }
+      };
+    };
+    for ((k, w) in all_grads.items()) {
+      env.data![k] = env.data[k] - AF.Const(lr / data.size().toFloat()) * w
+    };
+}
+
+mutable class Trainer {
+  model: Model,
+  loss_fun: (Tensor, Tensor) -> Tensor,
+  opt: Optimizer,
+  env: mutable Env
+} {
+  mutable fun loss(data: Sequence<(AF.Array, AF.Array)>): Float {
+    data.map(d -> {
+      (xi, yi) = d;
+      this.loss_fun(this.model.forward(Tensor.Input(xi)), Tensor.Input(yi))
+      .eval(freeze(this.env.data))
+      .scalar()
+    }).sumFloat() / data.size().toFloat();
+  }
+
+  untracked mutable fun step(data: Sequence<(AF.Array, AF.Array)>): void {
+    this.opt.step((xi, yi) -> { this.loss_fun(this.model.forward(xi), yi) },
+                  data, this.env);
   }
 }
 
 untracked fun buildSimpleExample(): void {
-  data = Range(0, 20).map(_ -> { x = AF.randu(1); (x, AF.sin(x))});
+  data = Range(0, 20).map(_ -> { x = AF.randu(1); (x, AF.sin(x)) });
+  eval = Range(0,  5).map(_ -> { x = AF.randu(1); (x, AF.sin(x)) });
 
-  eval = Range(0, 5).map(_ -> { x = AF.randu(1); (x, AF.sin(x)) });
+  params = mutable Env();
+  w_0 = params.parameter(AF.randu(1, 10));
+  w_1 = params.parameter(AF.randu(10, 1));
+  model = Seq(Vector[Linear(w_0),
+                     Sigmoid(),
+                     Linear(w_1),
+                     Sigmoid()]);
 
-  env = mutable Env();
-  lr = 0.1;
-  _opt = SGD(lr);
-
-  nn = makeMLP(Vector[1, 10, 1], env);
+  trainer = mutable Trainer{
+    model => model,
+    loss_fun => Loss.mse,
+    opt => SGD{lr => 1.0},
+    env => params
+  };
 
   for (epoch in Range(0, 1000)) {
-    all_grads = mutable Map<String, AF.Array>[];
-    data.each(d -> {
-      (xi, yi) = d;
-      model = nn.forward(Tensor.Input(xi));
-      loss = MSELoss().compute(model, Tensor.Input(yi));
-      //print_string(loss.dims(env));
-      grads = loss.backward(Tensor.Constant(1.0, 1));
-      fenv = freeze(env.data);
-      grads.each((k, _) -> {
-        if (all_grads.containsKey(k)) {
-          all_grads![k] = all_grads[k] + grads[k].eval(fenv);
-        } else {
-          all_grads![k] = grads[k].eval(fenv)
-        }
-      })
-    });
-    all_grads.each((k, w) -> {
-      env.data![k] = env.data[k] - AF.mult_fa(lr / all_grads.size().toFloat(), w)
-    });
-
-    avg_loss = eval.map(d -> {
-      (xi, yi) = d;
-      MSELoss()
-      .compute(nn.forward(Tensor.Input(xi)), Tensor.Input(yi))
-      .eval(freeze(env.data))
-      .scalar()
-    }).sumFloat() / eval.size().toFloat();
-    print_string(`Epoch #${epoch}: \tAverage loss: ${avg_loss}`);
-
-    // opt.step(loss, env, data);
+    trainer.step(data);
+    print_string(`Epoch #${epoch}\t  Loss: ${trainer.loss(eval)}\t (train loss: ${trainer.loss(data)})`)
   };
 }
