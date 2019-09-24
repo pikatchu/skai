@@ -21,12 +21,16 @@ mutable class Params(
     Tensor.Param(name)
   }
 
-  readonly fun get(name: String): AF.Array {
-    this.data[name];
+  readonly fun get<T: Show>(name: T): AF.Array {
+    this.data[name.toString()];
   }
 
-  mutable fun set(name: String, arr: AF.Array): void {
-    this.data![name] = arr;
+  mutable fun set<T: Show>(name: T, arr: AF.Array): void {
+    this.data![name.toString()] = arr;
+  }
+
+  readonly fun items(): mutable Map.MapItemsIterator<String, AF.Array> {
+    freeze(this.data).items()
   }
 
   readonly fun print(): void {
@@ -72,7 +76,7 @@ class Int(value: .Int) extends Tensor {
   }
 }
 
-base class .Tensor {
+base class .Tensor uses Show {
   children =
   | Param(String)
   | Input(AF.Array)
@@ -243,13 +247,15 @@ base class .Tensor {
   fun backward(
     params: readonly Params = Params(),
     gradient: Tensor = ConstantOfInt(1, this)
-  ): Map<String, AF.Array> {
+  ): Params { // Map<String, AF.Array> {
     acc = mutable Map[];
     this.buildGradients(gradient, acc);
 
-    acc.map((_, g) -> {
-      g.eval(params)
-    })
+    Params(
+      acc.map((_, g) -> {
+        g.eval(params)
+      })
+    )
   }
 
   @gc
@@ -292,6 +298,11 @@ base class .Tensor {
   fun eval(params: readonly Params = Params()): AF.Array {
     awaitSynchronously(this.asyncEval(freeze(params.data)))
   }
+
+  fun toString(): String
+  | Bind(name, _)
+  | Param(name) -> name
+  | _ -> invariant_violation("Unbound tensor.")
 }
 
 module end;
@@ -399,7 +410,6 @@ untracked fun testAll(): void {
     sigx = AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-x.eval(params))));
     t.expect_array_equal(dx, sigx * ((AF.minus_fa(1.0, sigx))));
 
-
     z = Tensor.Reciprocal(Tensor.Constant(1.0, 5) + Tensor.Exp(-x));
     grads2 = z.backward(params);
     dx2 = grads2["x"];
@@ -409,8 +419,9 @@ untracked fun testAll(): void {
   .test("test_basic_arithmetic", t -> {
     x = Tensor.Bind("x", Tensor.Constant(1.0, 5));
     y = x * x * x * x;
-    grads = y.backward(); // grads[x] directly??
-    t.expect_array_equal(grads["x"], Tensor.Constant(4.0, 5).eval())
+    grads = y.backward();
+    t.expect_array_equal(grads["x"], Tensor.Constant(4.0, 5).eval());
+    t.expect_array_equal(grads[x], Tensor.Constant(4.0, 5).eval())
   }).run()
 }
 

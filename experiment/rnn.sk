@@ -14,8 +14,8 @@ untracked fun buildRnn(): void {
   });
 
   params = mutable Tensor.Params();
-  r = params.add(AF.randu(n, n), "R");
-  w = params.add(AF.randu(n, d), "W");
+  r = params.add(AF.randu(n, n));
+  w = params.add(AF.randu(n, d));
 
   lr = 0.5;
   for (di in data) {
@@ -29,8 +29,8 @@ untracked fun buildRnn(): void {
 
     grads = loss.backward(params);
 
-    params!["R"] = params["R"] + AF.Const(lr) * grads["R"];
-    params!["W"] = params["W"] + AF.Const(lr) * grads["W"];
-    AF.print(grads["R"]);
+    params![r] = params[r] + AF.Const(lr) * grads[r];
+    params![r] = params[r] + AF.Const(lr) * grads[r];
+    AF.print(grads[r]);
   };
 }
