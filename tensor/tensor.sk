@@ -122,10 +122,10 @@ base class .Tensor {
     Reciprocal(this)
   }
 
-  fun dims(env: Map<String, AF.Array>): Vector<.Int>
+  fun dims(params: Map<String, AF.Array>): Vector<.Int>
   | Int(_tensor) -> invariant_violation("Case not handled yet")
-  | Param(name) -> if (env.containsKey(name)) {
-      Input(env[name]).dims(env)
+  | Param(name) -> if (params.containsKey(name)) {
+      Input(params[name]).dims(params)
     } else {
       invariant_violation(`Unknown input ${name}`)
     }
@@ -143,8 +143,8 @@ base class .Tensor {
   | Cos(tensor)
   | Tan(tensor)
   | Exp(tensor)
-  | Sigmoid(tensor) -> tensor.dims(env)
-  | Transpose(tensor) -> d = tensor.dims(env);
+  | Sigmoid(tensor) -> tensor.dims(params)
+  | Transpose(tensor) -> d = tensor.dims(params);
     if (d.size() == 1) {
       if (d[0] == 1) {
         Vector[1]
@@ -160,7 +160,7 @@ base class .Tensor {
     } else {
       invariant_violation("Cannot transpose higher order tensors.")
     }
-  | MatMul(u, v) -> du = u.dims(env); dv = v.dims(env);
+  | MatMul(u, v) -> du = u.dims(params); dv = v.dims(params);
     if (du.size() > 2 && dv.size() > 2) {
       invariant_violation("Cannot matmul higher order tensors.")
     };
@@ -174,7 +174,7 @@ base class .Tensor {
     } else {
       Vector[du[0]]
     }
-  | Operation(_, lhs, rhs) -> lhsDims = lhs.dims(env); rhsDims = rhs.dims(env);
+  | Operation(_, lhs, rhs) -> lhsDims = lhs.dims(params); rhsDims = rhs.dims(params);
     if (lhsDims != rhsDims) {
       debug(lhs);
       debug(rhs);
@@ -249,44 +249,44 @@ base class .Tensor {
   }
 
   @gc
-  memoized async fun asyncEval(env: Map<String, AF.Array>): ^AF.Array {
+  memoized async fun asyncEval(params: Map<String, AF.Array>): ^AF.Array {
     this match {
     | Int _ -> invariant_violation("Bad usage of Tensor.Int")
     | Param(n) ->
-      if (!env.containsKey(n)) {
-        invariant_violation(`Environment does not define the input ${n}`)
+      if (!params.containsKey(n)) {
+        invariant_violation(`Paramsironment does not define the input ${n}`)
       } else {
-        env[n]
+        params[n]
       }
     | Input(arr) -> arr
-    | Bind(_, tensor) -> await tensor.asyncEval(env)
+    | Bind(_, tensor) -> await tensor.asyncEval(params)
     | ConstantOfInt(value, tensor) ->
-      AF.constant_of_int(value, await tensor.asyncEval(env))
+      AF.constant_of_int(value, await tensor.asyncEval(params))
     | Constant(value, dims) -> AF.constant(value, dims)
     | Operation(operator, lhsTree, rhsTree) ->
-      lhs = await lhsTree.asyncEval(env);
-      rhs = await rhsTree.asyncEval(env);
+      lhs = await lhsTree.asyncEval(params);
+      rhs = await rhsTree.asyncEval(params);
       operator match {
       | Multiply() -> lhs * rhs
       | Divide() -> lhs / rhs
       | Add() -> lhs + rhs
       | Sub() -> lhs - rhs
       }
-    | Negate(v) -> AF.negate(await v.asyncEval(env))
-    | Reciprocal(v) -> AF.Const(1.0) / await v.asyncEval(env)
-    | Sin(v) -> AF.sin(await v.asyncEval(env))
-    | Cos(v) -> AF.cos(await v.asyncEval(env))
-    | Tan(v) -> AF.tan(await v.asyncEval(env))
-    | Exp(v) -> AF.exp(await v.asyncEval(env))
-    | Sigmoid(v) -> res = await v.asyncEval(env);
+    | Negate(v) -> AF.negate(await v.asyncEval(params))
+    | Reciprocal(v) -> AF.Const(1.0) / await v.asyncEval(params)
+    | Sin(v) -> AF.sin(await v.asyncEval(params))
+    | Cos(v) -> AF.cos(await v.asyncEval(params))
+    | Tan(v) -> AF.tan(await v.asyncEval(params))
+    | Exp(v) -> AF.exp(await v.asyncEval(params))
+    | Sigmoid(v) -> res = await v.asyncEval(params);
       AF.div_fa(1.0, AF.Const(1.0) + AF.exp(-res))
-    | MatMul(u, v) -> AF.matmul(await u.asyncEval(env), await v.asyncEval(env))
-    | Transpose(v) -> AF.transpose(await v.asyncEval(env))
+    | MatMul(u, v) -> AF.matmul(await u.asyncEval(params), await v.asyncEval(params))
+    | Transpose(v) -> AF.transpose(await v.asyncEval(params))
     }
   }
 
-  fun eval(env: readonly Params): AF.Array {
-    awaitSynchronously(this.asyncEval(freeze(env.data)))
+  fun eval(params: readonly Params): AF.Array {
+    awaitSynchronously(this.asyncEval(freeze(params.data)))
   }
 }
 
@@ -308,96 +308,96 @@ module end;
 module TestTensor;
 
 untracked fun testAll(): void {
-  env = Tensor.Params(Map["x" => AF.randu(5), "y" => AF.randu(5)]);
+  params = Tensor.Params(Map["x" => AF.randu(5), "y" => AF.randu(5)]);
 
   Test.group("Tensor.backward")
   .test("multiply", t -> {
     x = Tensor.Param("x");
     y = x * x;
-    grads = y.backward(env);
+    grads = y.backward(params);
     dx = grads["x"];
 
-    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(env)))
+    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(params)))
   })
   .test("test_multiply_add", t -> {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x * x + x * y + y * y;
-    grads = z.backward(env);
+    grads = z.backward(params);
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(env)) + y.eval(env));
-    t.expect_array_equal(dy, AF.mult_ia(2, y.eval(env)) + x.eval(env))
+    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(params)) + y.eval(params));
+    t.expect_array_equal(dy, AF.mult_ia(2, y.eval(params)) + x.eval(params))
   })
   .test("test_multiply_sub", t -> {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x * x - x * y;
-    grads = z.backward(env);
+    grads = z.backward(params);
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(env)) - y.eval(env));
-    t.expect_array_equal(dy, -x.eval(env))
+    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(params)) - y.eval(params));
+    t.expect_array_equal(dy, -x.eval(params))
   })
   .test("test_divide_add", t -> {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x + x / y + y;
-    grads = z.backward(env);
+    grads = z.backward(params);
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx, AF.plus_fa(1.0, AF.div_fa(1.0, y.eval(env))));
+    t.expect_array_equal(dx, AF.plus_fa(1.0, AF.div_fa(1.0, y.eval(params))));
     t.expect_array_equal(
       dy,
-      AF.minus_fa(1.0, (x.eval(env) / (y.eval(env) * y.eval(env)))),
+      AF.minus_fa(1.0, (x.eval(params) / (y.eval(params) * y.eval(params)))),
     )
   })
   .test("test_multiply_add_scalar", t -> {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x * Tensor.Int(2) + x * y + y;
-    grads = z.backward(env);
+    grads = z.backward(params);
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx, AF.plus_fa(2.0, y.eval(env)));
-    t.expect_array_equal(dy, AF.plus_fa(1.0, x.eval(env)))
+    t.expect_array_equal(dx, AF.plus_fa(2.0, y.eval(params)));
+    t.expect_array_equal(dy, AF.plus_fa(1.0, x.eval(params)))
   })
   .test("test_bind", t -> {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x * Tensor.Int(2) + Tensor.Bind("myVar", x * y) + y;
-    grads = z.backward(env);
+    grads = z.backward(params);
     dx = grads["x"];
     dy = grads["y"];
     AF.print(grads["myVar"]);
 
-    t.expect_array_equal(dx, AF.Const(2.0) + y.eval(env));
-    t.expect_array_equal(dy, AF.Const(1.0) + x.eval(env))
+    t.expect_array_equal(dx, AF.Const(2.0) + y.eval(params));
+    t.expect_array_equal(dy, AF.Const(1.0) + x.eval(params))
   })
   .test("test_exp", t -> {
     x = Tensor.Param("x");
     y = Tensor.Exp(x);
-    grads = y.backward(env);
+    grads = y.backward(params);
     dx = grads["x"];
 
-    t.expect_array_equal(dx, AF.exp(x.eval(env)))
+    t.expect_array_equal(dx, AF.exp(x.eval(params)))
   })
   .test("test_sigmoid", t -> {
     x = Tensor.Param("x");
     y = Tensor.Sigmoid(x);
-    grads = y.backward(env);
+    grads = y.backward(params);
     dx = grads["x"];
 
-    sigx = AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-x.eval(env))));
+    sigx = AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-x.eval(params))));
     t.expect_array_equal(dx, sigx * ((AF.minus_fa(1.0, sigx))));
 
 
     z = Tensor.Reciprocal(Tensor.Constant(1.0, 5) + Tensor.Exp(-x));
-    grads2 = z.backward(env);
+    grads2 = z.backward(params);
     dx2 = grads2["x"];
 
     t.expect_array_equal(dx2, sigx * ((AF.minus_fa(1.0, sigx))))

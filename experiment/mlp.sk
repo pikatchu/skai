@@ -1,9 +1,9 @@
 module alias AF = ArrayFire;
 
-untracked fun makeMLP(dims: Vector<Int>, env: mutable Tensor.Params): Skai.Model {
+untracked fun makeMLP(dims: Vector<Int>, params: mutable Tensor.Params): Skai.Model {
   seq = mutable Vector<Skai.Model>[];
   for (i in Range(0, dims.size() - 1)) {
-    w_i = env.add(AF.randu(dims[i], dims[i+1]), `w_${i}`);
+    w_i = params.add(AF.randu(dims[i], dims[i+1]), `w_${i}`);
 
     seq.push(Skai.Linear(w_i));
     seq.push(Skai.Sigmoid());
