@@ -1,14 +1,15 @@
 module alias AF = ArrayFire;
+module alias NN = SkaiModel;
 
-untracked fun makeMLP(dims: Vector<Int>, params: mutable Tensor.Params): Skai.Model {
-  seq = mutable Vector<Skai.Model>[];
+untracked fun makeMLP(dims: Vector<Int>, params: mutable Tensor.Params): NN.Model {
+  seq = mutable Vector<NN.Model>[];
   for (i in Range(0, dims.size() - 1)) {
     w_i = params.add(AF.randu(dims[i], dims[i+1]), `w_${i}`);
 
-    seq.push(Skai.Linear(w_i));
-    seq.push(Skai.Sigmoid());
+    seq.push(NN.Linear(w_i));
+    seq.push(NN.Sigmoid());
   };
-  Skai.Seq(freeze(seq))
+  NN.Seq(freeze(seq))
 }
 
 untracked fun buildSimpleExample(): void {
@@ -18,15 +19,15 @@ untracked fun buildSimpleExample(): void {
   params = mutable Tensor.Params();
   w_0 = params.add(AF.randu(1, 10));
   w_1 = params.add(AF.randu(10, 1));
-  model = Skai.Seq[Skai.Linear(w_0),
-                   Skai.Sigmoid(),
-                   Skai.Linear(w_1),
-                   Skai.Sigmoid()];
+  model = NN.Seq[NN.Linear(w_0),
+                 NN.Sigmoid(),
+                 NN.Linear(w_1),
+                 NN.Sigmoid()];
 
   trainer = mutable Skai.Trainer{
     model,
     loss_fun => Loss.mse,
-    opt => Skai.SGD{lr => 1.0},
+    opt => Optimizer.SGD{lr => 1.0},
     params
   };
 

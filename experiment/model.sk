@@ -1,4 +1,4 @@
-module Skai;
+module SkaiModel;
 
 mutable base class Model {
   children =
@@ -9,15 +9,17 @@ mutable base class Model {
   fun forward(input: Tensor): Tensor
   | Sigmoid() -> Tensor.Sigmoid(input)
   | Linear(w) ->
-      Tensor.MatMul(Tensor.Transpose(w), input)
+    Tensor.MatMul(Tensor.Transpose(w), input)
   | Seq(arr) ->
-      acc = input;
-  arr.each(x -> !acc = x.forward(acc));
-  acc
+    acc = input;
+    arr.each(x -> !acc = x.forward(acc));
+    acc
 
-  static fun createFromItems(items: Sequence<Model>): Model {
-    Seq(items)
-  }
+  static fun createFromItems(items: Sequence<Model>): Model
+  | Seq _ -> Seq(items)
+  | Linear _
+  | Sigmoid _ -> invariant_violation("Not supported")
+
 }
 
 module end;

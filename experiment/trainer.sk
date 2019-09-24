@@ -1,8 +1,8 @@
 module alias AF = ArrayFire;
 
-module Skai;
+module Optimizer;
 
-base class Optimizer {
+base class .Optimizer {
   children =
   | SGD{lr: Float}
 
@@ -28,8 +28,12 @@ base class Optimizer {
     };
 }
 
+module end;
+
+module Skai;
+
 mutable class Trainer {
-  model: Model,
+  model: SkaiModel.Model,
   loss_fun: (Tensor, Tensor) -> Tensor,
   opt: Optimizer,
   params: mutable Tensor.Params
