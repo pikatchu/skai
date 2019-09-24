@@ -289,7 +289,7 @@ base class .Tensor {
     }
   }
 
-  fun eval(params: readonly Params): AF.Array {
+  fun eval(params: readonly Params = Params()): AF.Array {
     awaitSynchronously(this.asyncEval(freeze(params.data)))
   }
 }
@@ -405,6 +405,12 @@ untracked fun testAll(): void {
     dx2 = grads2["x"];
 
     t.expect_array_equal(dx2, sigx * ((AF.minus_fa(1.0, sigx))))
+  })
+  .test("test_basic_arithmetic", t -> {
+    x = Tensor.Bind("x", Tensor.Constant(1.0, 5));
+    y = x * x * x * x;
+    grads = y.backward(); // grads[x] directly??
+    t.expect_array_equal(grads["x"], Tensor.Constant(4.0, 5).eval())
   }).run()
 }
 
