@@ -1,0 +1,23 @@
+module Skai;
+
+mutable base class Model {
+  children =
+  | Sigmoid()
+  | Seq(Sequence<Model>)
+  | Linear(Tensor.Param)
+
+  fun forward(input: Tensor): Tensor
+  | Sigmoid() -> Tensor.Sigmoid(input)
+  | Linear(w) ->
+      Tensor.MatMul(Tensor.Transpose(w), input)
+  | Seq(arr) ->
+      acc = input;
+  arr.each(x -> !acc = x.forward(acc));
+  acc
+
+  static fun createFromItems(items: Sequence<Model>): Model {
+    Seq(items)
+  }
+}
+
+module end;

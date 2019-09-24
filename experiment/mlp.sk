@@ -1,82 +1,14 @@
 module alias AF = ArrayFire;
 
-untracked fun makeMLP(dims: Vector<Int>, env: mutable Tensor.Params): Model {
-  seq = mutable Vector<Model>[];
+untracked fun makeMLP(dims: Vector<Int>, env: mutable Tensor.Params): Skai.Model {
+  seq = mutable Vector<Skai.Model>[];
   for (i in Range(0, dims.size() - 1)) {
     w_i = env.add(AF.randu(dims[i], dims[i+1]), `w_${i}`);
 
-    seq.push(Linear(w_i));
-    seq.push(Sigmoid());
+    seq.push(Skai.Linear(w_i));
+    seq.push(Skai.Sigmoid());
   };
-  Seq(freeze(seq))
-}
-
-
-mutable base class Model {
-  children =
-  | Sigmoid()
-  | Seq(Sequence<Model>)
-  | Linear(Tensor.Param)
-
-  fun forward(input: Tensor): Tensor
-  | Sigmoid() -> Tensor.Sigmoid(input)
-  | Linear(w) ->
-    Tensor.MatMul(Tensor.Transpose(w), input)
-  | Seq(arr) ->
-    acc = input;
-    arr.each(x -> !acc = x.forward(acc));
-    acc
-
-  static fun createFromItems(items: Sequence<Model>): Model {
-    Seq(items)
-  }
-}
-
-base class Optimizer {
-  children =
-  | SGD{lr: Float}
-
-  untracked fun step(loss_fun: (Tensor, Tensor) -> Tensor,
-                   data: Sequence<(AF.Array, AF.Array)>,
-                   env: mutable Tensor.Params): void
-  | SGD{lr} ->
-    all_grads = mutable Map<String, AF.Array>[];
-    for (d in data) {
-      (xi, yi) = d;
-      loss = loss_fun(Tensor.Input(xi), Tensor.Input(yi));
-      grads = loss.backward(env.data);
-      for ((k, w) in grads.items()) {
-        if (all_grads.containsKey(k)) {
-          all_grads![k] = all_grads[k] + w;
-        } else {
-          all_grads![k] = w
-        }
-      };
-    };
-    for ((k, w) in all_grads.items()) {
-      env.data![k] = env.data[k] - AF.Const(lr / data.size().toFloat()) * w
-    };
-}
-
-mutable class Trainer {
-  model: Model,
-  loss_fun: (Tensor, Tensor) -> Tensor,
-  opt: Optimizer,
-  env: mutable Tensor.Params
-} {
-  mutable fun loss(data: Sequence<(AF.Array, AF.Array)>): Float {
-    data.map(d -> {
-      (xi, yi) = d;
-      this.loss_fun(this.model.forward(Tensor.Input(xi)), Tensor.Input(yi))
-      .eval(this.env.data)
-      .scalar()
-    }).sumFloat() / data.size().toFloat();
-  }
-
-  untracked mutable fun step(data: Sequence<(AF.Array, AF.Array)>): void {
-    this.opt.step((xi, yi) -> { this.loss_fun(this.model.forward(xi), yi) },
-                  data, this.env);
-  }
+  Skai.Seq(freeze(seq))
 }
 
 untracked fun buildSimpleExample(): void {
@@ -86,15 +18,15 @@ untracked fun buildSimpleExample(): void {
   params = mutable Tensor.Params();
   w_0 = params.add(AF.randu(1, 10));
   w_1 = params.add(AF.randu(10, 1));
-  model = Seq[Linear(w_0),
-              Sigmoid(),
-              Linear(w_1),
-              Sigmoid()];
+  model = Skai.Seq[Skai.Linear(w_0),
+                   Skai.Sigmoid(),
+                   Skai.Linear(w_1),
+                   Skai.Sigmoid()];
 
-  trainer = mutable Trainer{
+  trainer = mutable Skai.Trainer{
     model => model,
     loss_fun => Loss.mse,
-    opt => SGD{lr => 1.0},
+    opt => Skai.SGD{lr => 1.0},
     env => params
   };
 
