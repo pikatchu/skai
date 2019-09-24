@@ -24,10 +24,10 @@ untracked fun buildSimpleExample(): void {
                    Skai.Sigmoid()];
 
   trainer = mutable Skai.Trainer{
-    model => model,
+    model,
     loss_fun => Loss.mse,
     opt => Skai.SGD{lr => 1.0},
-    env => params
+    params
   };
 
   for (epoch in Range(0, 1000)) {

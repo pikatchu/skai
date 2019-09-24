@@ -8,13 +8,13 @@ base class Optimizer {
 
   untracked fun step(loss_fun: (Tensor, Tensor) -> Tensor,
                      data: Sequence<(AF.Array, AF.Array)>,
-                     env: mutable Tensor.Params): void
+                     params: mutable Tensor.Params): void
   | SGD{lr} ->
     all_grads = mutable Map<String, AF.Array>[];
     for (d in data) {
       (xi, yi) = d;
       loss = loss_fun(Tensor.Input(xi), Tensor.Input(yi));
-      grads = loss.backward(env.data);
+      grads = loss.backward(params);
       for ((k, w) in grads.items()) {
         if (all_grads.containsKey(k)) {
           all_grads![k] = all_grads[k] + w;
@@ -24,7 +24,7 @@ base class Optimizer {
       };
     };
     for ((k, w) in all_grads.items()) {
-      env.data![k] = env.data[k] - AF.Const(lr / data.size().toFloat()) * w
+      params.data![k] = params[k] - AF.Const(lr / data.size().toFloat()) * w
     };
 }
 
@@ -32,20 +32,20 @@ mutable class Trainer {
   model: Model,
   loss_fun: (Tensor, Tensor) -> Tensor,
   opt: Optimizer,
-  env: mutable Tensor.Params
+  params: mutable Tensor.Params
 } {
   mutable fun loss(data: Sequence<(AF.Array, AF.Array)>): Float {
     data.map(d -> {
       (xi, yi) = d;
       this.loss_fun(this.model.forward(Tensor.Input(xi)), Tensor.Input(yi))
-      .eval(this.env.data)
+      .eval(this.params)
       .scalar()
     }).sumFloat() / data.size().toFloat();
   }
 
   untracked mutable fun step(data: Sequence<(AF.Array, AF.Array)>): void {
     this.opt.step((xi, yi) -> { this.loss_fun(this.model.forward(xi), yi) },
-                  data, this.env);
+                  data, this.params);
   }
 }
 

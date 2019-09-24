@@ -21,6 +21,10 @@ mutable class Params(
     Tensor.Param(name)
   }
 
+  readonly fun get(name: String): AF.Array {
+    this.data[name];
+  }
+
   readonly fun print(): void {
     for ((k, w) in this.data.items()) {
       print_string(k);
@@ -232,17 +236,16 @@ base class .Tensor {
     rhs.buildGradients(MatMul(Transpose(lhs), gradient), acc)
   | Transpose(tensor) -> tensor.buildGradients(Transpose(gradient), acc)
 
-  fun backward(params: readonly Map<String, AF.Array>): Map<String, AF.Array> {
+  fun backward(
+    params: readonly Params,
+    gradient: Tensor = ConstantOfInt(1, this)
+  ): Map<String, AF.Array> {
     acc = mutable Map[];
-    gradient = ConstantOfInt(1, this);
     this.buildGradients(gradient, acc);
 
-    fparams = freeze(params);
-    res = acc.map((_, g) -> {
-      g.eval(fparams)
-    });
-
-    res
+    acc.map((_, g) -> {
+      g.eval(params)
+    })
   }
 
   @gc
@@ -282,8 +285,8 @@ base class .Tensor {
     }
   }
 
-  fun eval(env: readonly Map<String, AF.Array>): AF.Array {
-    awaitSynchronously(this.asyncEval(freeze(env)))
+  fun eval(env: readonly Params): AF.Array {
+    awaitSynchronously(this.asyncEval(freeze(env.data)))
   }
 }
 
@@ -305,7 +308,7 @@ module end;
 module TestTensor;
 
 untracked fun testAll(): void {
-  env = Map["x" => AF.randu(5), "y" => AF.randu(5)];
+  env = Tensor.Params(Map["x" => AF.randu(5), "y" => AF.randu(5)]);
 
   Test.group("Tensor.backward")
   .test("multiply", t -> {
