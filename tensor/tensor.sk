@@ -25,6 +25,10 @@ mutable class Params(
     this.data[name];
   }
 
+  mutable fun set(name: String, arr: AF.Array): void {
+    this.data![name] = arr;
+  }
+
   readonly fun print(): void {
     for ((k, w) in this.data.items()) {
       print_string(k);
@@ -237,7 +241,7 @@ base class .Tensor {
   | Transpose(tensor) -> tensor.buildGradients(Transpose(gradient), acc)
 
   fun backward(
-    params: readonly Params,
+    params: readonly Params = Params(),
     gradient: Tensor = ConstantOfInt(1, this)
   ): Map<String, AF.Array> {
     acc = mutable Map[];

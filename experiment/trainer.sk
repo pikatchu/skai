@@ -24,7 +24,7 @@ base class .Optimizer {
       };
     };
     for ((k, w) in all_grads.items()) {
-      params.data![k] = params[k] - AF.Const(lr / data.size().toFloat()) * w
+      params![k] = params[k] - AF.Const(lr / data.size().toFloat()) * w
     };
 }
 

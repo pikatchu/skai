@@ -1,10 +1,10 @@
 module alias AF = ArrayFire;
 
 untracked fun buildRnn(): void {
-  rand = Random::mcreate(1337);
   n = 10;
   d = 4;
 
+  rand = Random::mcreate(1337);
   data = Range(0, 100).map(_ -> {
     l = rand.random(1, 12);
     (
@@ -29,8 +29,8 @@ untracked fun buildRnn(): void {
 
     grads = loss.backward(params);
 
-    params.data!["R"] = params.data["R"] + AF.Const(lr) * grads["R"];
-    params.data!["W"] = params.data["W"] + AF.Const(lr) * grads["W"];
+    params!["R"] = params["R"] + AF.Const(lr) * grads["R"];
+    params!["W"] = params["W"] + AF.Const(lr) * grads["W"];
     AF.print(grads["R"]);
   };
 }
