@@ -1,9 +1,9 @@
 module alias AF = ArrayFire;
 
-untracked fun makeMLP(dims: Vector<Int>, env: mutable Env): Model {
+untracked fun makeMLP(dims: Vector<Int>, env: mutable Tensor.Params): Model {
   seq = mutable Vector<Model>[];
   for (i in Range(0, dims.size() - 1)) {
-    w_i = env.parameter(AF.randu(dims[i], dims[i+1]), `w_${i}`);
+    w_i = env.add(AF.randu(dims[i], dims[i+1]), `w_${i}`);
 
     seq.push(Linear(w_i));
     seq.push(Sigmoid());
@@ -12,47 +12,24 @@ untracked fun makeMLP(dims: Vector<Int>, env: mutable Env): Model {
 }
 
 
-mutable class Env(
-  data: mutable Map<String, AF.Array> = mutable Map[],
-  mutable currentId: Int = 0,
-) {
-  mutable private fun genSym(): String {
-    this.!currentId = this.currentId + 1;
-    "w_" + this.currentId.toString()
-  }
-
-  mutable fun parameter(weights: AF.Array, name: String = ""): Tensor {
-    n = if (name == "") {
-      this.genSym()
-    } else {
-      name
-    };
-    this.data![n] = weights;
-    Tensor.Param(n)
-  }
-
-  readonly fun print(): void {
-    for ((k, w) in this.data.items()) {
-      print_string(k);
-      AF.print(w);
-    }
-  }
-}
-
 mutable base class Model {
   children =
   | Sigmoid()
-  | Seq(Vector<Model>)
-  | Linear(Tensor)
+  | Seq(Sequence<Model>)
+  | Linear(Tensor.Param)
 
   fun forward(input: Tensor): Tensor
   | Sigmoid() -> Tensor.Sigmoid(input)
   | Linear(w) ->
     Tensor.MatMul(Tensor.Transpose(w), input)
-  | Seq(v) ->
+  | Seq(arr) ->
     acc = input;
-    v.each(x -> !acc = x.forward(acc));
+    arr.each(x -> !acc = x.forward(acc));
     acc
+
+  static fun createFromItems(items: Sequence<Model>): Model {
+    Seq(items)
+  }
 }
 
 base class Optimizer {
@@ -61,13 +38,12 @@ base class Optimizer {
 
   untracked fun step(loss_fun: (Tensor, Tensor) -> Tensor,
                    data: Sequence<(AF.Array, AF.Array)>,
-                   env: mutable Env): void
+                   env: mutable Tensor.Params): void
   | SGD{lr} ->
     all_grads = mutable Map<String, AF.Array>[];
     for (d in data) {
       (xi, yi) = d;
       loss = loss_fun(Tensor.Input(xi), Tensor.Input(yi));
-      fenv = freeze(env.data);
       grads = loss.backward(env.data);
       for ((k, w) in grads.items()) {
         if (all_grads.containsKey(k)) {
@@ -86,13 +62,13 @@ mutable class Trainer {
   model: Model,
   loss_fun: (Tensor, Tensor) -> Tensor,
   opt: Optimizer,
-  env: mutable Env
+  env: mutable Tensor.Params
 } {
   mutable fun loss(data: Sequence<(AF.Array, AF.Array)>): Float {
     data.map(d -> {
       (xi, yi) = d;
       this.loss_fun(this.model.forward(Tensor.Input(xi)), Tensor.Input(yi))
-      .eval(freeze(this.env.data))
+      .eval(this.env.data)
       .scalar()
     }).sumFloat() / data.size().toFloat();
   }
@@ -107,13 +83,13 @@ untracked fun buildSimpleExample(): void {
   data = Range(0, 20).map(_ -> { x = AF.randu(1); (x, AF.sin(x)) });
   eval = Range(0,  5).map(_ -> { x = AF.randu(1); (x, AF.sin(x)) });
 
-  params = mutable Env();
-  w_0 = params.parameter(AF.randu(1, 10));
-  w_1 = params.parameter(AF.randu(10, 1));
-  model = Seq(Vector[Linear(w_0),
-                     Sigmoid(),
-                     Linear(w_1),
-                     Sigmoid()]);
+  params = mutable Tensor.Params();
+  w_0 = params.add(AF.randu(1, 10));
+  w_1 = params.add(AF.randu(10, 1));
+  model = Seq[Linear(w_0),
+              Sigmoid(),
+              Linear(w_1),
+              Sigmoid()];
 
   trainer = mutable Trainer{
     model => model,

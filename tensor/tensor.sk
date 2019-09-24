@@ -2,7 +2,32 @@ module alias AF = ArrayFire;
 
 module Tensor;
 
-type Env = Map<String, AF.Array>;
+mutable class Params(
+  data: mutable Map<String, AF.Array> = mutable Map[],
+  mutable currentId: .Int = 0
+) {
+  mutable private fun genSym(): String {
+    this.!currentId = this.currentId + 1;
+
+    "w_" + this.currentId.toString()
+  }
+
+  mutable fun add(value: AF.Array, name: String = ""): Tensor.Param {
+    if (name == "") {
+      !name = this.genSym()
+    };
+    this.data![name] = value;
+
+    Tensor.Param(name)
+  }
+
+  readonly fun print(): void {
+    for ((k, w) in this.data.items()) {
+      print_string(k);
+      AF.print(w);
+    }
+  }
+}
 
 base class OperationKind {
   children =
@@ -93,7 +118,7 @@ base class .Tensor {
     Reciprocal(this)
   }
 
-  fun dims(env: Env): Vector<.Int>
+  fun dims(env: Map<String, AF.Array>): Vector<.Int>
   | Int(_tensor) -> invariant_violation("Case not handled yet")
   | Param(name) -> if (env.containsKey(name)) {
       Input(env[name]).dims(env)
@@ -207,22 +232,21 @@ base class .Tensor {
     rhs.buildGradients(MatMul(Transpose(lhs), gradient), acc)
   | Transpose(tensor) -> tensor.buildGradients(Transpose(gradient), acc)
 
-  fun backward(
-    params: Env
-  ): Map<String, AF.Array> {
+  fun backward(params: readonly Map<String, AF.Array>): Map<String, AF.Array> {
     acc = mutable Map[];
     gradient = ConstantOfInt(1, this);
     this.buildGradients(gradient, acc);
 
+    fparams = freeze(params);
     res = acc.map((_, g) -> {
-      g.eval(params)
+      g.eval(fparams)
     });
 
     res
   }
 
   @gc
-  memoized async fun asyncEval(env: Env): ^AF.Array {
+  memoized async fun asyncEval(env: Map<String, AF.Array>): ^AF.Array {
     this match {
     | Int _ -> invariant_violation("Bad usage of Tensor.Int")
     | Param(n) ->
@@ -240,26 +264,26 @@ base class .Tensor {
       lhs = await lhsTree.asyncEval(env);
       rhs = await rhsTree.asyncEval(env);
       operator match {
-      | Multiply() -> AF.mult_aa(lhs, rhs)
-      | Divide() -> AF.div_aa(lhs, rhs)
-      | Add() -> AF.plus_aa(lhs, rhs)
-      | Sub() -> AF.minus_aa(lhs, rhs)
+      | Multiply() -> lhs * rhs
+      | Divide() -> lhs / rhs
+      | Add() -> lhs + rhs
+      | Sub() -> lhs - rhs
       }
     | Negate(v) -> AF.negate(await v.asyncEval(env))
-    | Reciprocal(v) -> AF.div_fa(1.0, await v.asyncEval(env))
+    | Reciprocal(v) -> AF.Const(1.0) / await v.asyncEval(env)
     | Sin(v) -> AF.sin(await v.asyncEval(env))
     | Cos(v) -> AF.cos(await v.asyncEval(env))
     | Tan(v) -> AF.tan(await v.asyncEval(env))
     | Exp(v) -> AF.exp(await v.asyncEval(env))
     | Sigmoid(v) -> res = await v.asyncEval(env);
-      AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-res)))
+      AF.div_fa(1.0, AF.Const(1.0) + AF.exp(-res))
     | MatMul(u, v) -> AF.matmul(await u.asyncEval(env), await v.asyncEval(env))
     | Transpose(v) -> AF.transpose(await v.asyncEval(env))
     }
   }
 
-  fun eval(env: Env): AF.Array {
-    awaitSynchronously(this.asyncEval(env))
+  fun eval(env: readonly Map<String, AF.Array>): AF.Array {
+    awaitSynchronously(this.asyncEval(freeze(env)))
   }
 }
 
