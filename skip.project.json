@@ -3,7 +3,12 @@
     "programUnits": {
         "a.out": {
             "kind": "Program",
-            "sources": ["main.sk", "tensor/tensor.sk", "tensor/test.sk", "arrayfire/.", "experiment/mlp.sk", "experiment/loss.sk", "experiment/rnn.sk", "experiment/trainer.sk", "experiment/model.sk"],
+            "sources": [
+                "main.sk",
+                "tensor/.",
+                "arrayfire/.",
+                "experiment/."
+            ],
             "references": [{ "path": "/usr/local/lib/skip/prelude" }]
         }
     }
