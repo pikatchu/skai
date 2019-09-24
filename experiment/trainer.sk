@@ -6,25 +6,10 @@ base class .Optimizer {
   children =
   | SGD{lr: Float}
 
-  untracked fun step(loss_fun: (Tensor, Tensor) -> Tensor,
-                     data: Sequence<(AF.Array, AF.Array)>,
-                     params: mutable Tensor.Params): void
+  untracked fun step(params: mutable Tensor.Params, grads: Tensor.Params): void
   | SGD{lr} ->
-    all_grads = mutable Map<String, AF.Array>[];
-    for (d in data) {
-      (xi, yi) = d;
-      loss = loss_fun(Tensor.Input(xi), Tensor.Input(yi));
-      grads = loss.backward(params);
-      for ((k, w) in grads.items()) {
-        if (all_grads.containsKey(k)) {
-          all_grads![k] = all_grads[k] + w;
-        } else {
-          all_grads![k] = w
-        }
-      };
-    };
-    for ((k, w) in all_grads.items()) {
-      params![k] = params[k] - AF.Const(lr / data.size().toFloat()) * w
+    for ((k, w) in grads.items()) {
+      params![k] = params[k] - AF.Const(lr) * w
     };
 }
 
@@ -38,19 +23,19 @@ mutable class Trainer {
   opt: Optimizer,
   params: mutable Tensor.Params
 } {
-  mutable fun loss(data: Sequence<(AF.Array, AF.Array)>): Float {
-    data.map(d -> {
-      (xi, yi) = d;
-      this.loss_fun(this.model.forward(Tensor.Input(xi)), Tensor.Input(yi))
-      .eval(this.params)
-      .scalar()
-    }).sumFloat() / data.size().toFloat();
-  }
+  // mutable fun loss(data: Sequence<(AF.Array, AF.Array)>): Float {
+  //   data.map(d -> {
+  //     (xi, yi) = d;
+  //     this.loss_fun(this.model.forward(Tensor.Input(xi)), Tensor.Input(yi))
+  //     .eval(this.params)
+  //     .scalar()
+  //   }).sumFloat() / data.size().toFloat();
+  // }
 
-  untracked mutable fun step(data: Sequence<(AF.Array, AF.Array)>): void {
-    this.opt.step((xi, yi) -> { this.loss_fun(this.model.forward(xi), yi) },
-                  data, this.params);
-  }
+  // untracked mutable fun step(data: Sequence<(AF.Array, AF.Array)>): void {
+  //   this.opt.step((xi, yi) -> { this.loss_fun(this.model.forward(xi), yi) },
+  //                 data, this.params);
+  // }
 }
 
 module end;

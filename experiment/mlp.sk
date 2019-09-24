@@ -14,7 +14,7 @@ untracked fun makeMLP(dims: Vector<Int>, params: mutable Tensor.Params): NN.Mode
 
 untracked fun buildSimpleExample(): void {
   data = Range(0, 20).map(_ -> { x = AF.randu(1); (x, AF.sin(x)) });
-  eval = Range(0,  5).map(_ -> { x = AF.randu(1); (x, AF.sin(x)) });
+  _eval = Range(0,  5).map(_ -> { x = AF.randu(1); (x, AF.sin(x)) });
 
   params = mutable Tensor.Params();
   w_0 = params.add(AF.randu(1, 10));
@@ -24,15 +24,20 @@ untracked fun buildSimpleExample(): void {
                  NN.Linear(w_1),
                  NN.Sigmoid()];
 
-  trainer = mutable Skai.Trainer{
-    model,
-    loss_fun => Loss.mse,
-    opt => Optimizer.SGD{lr => 1.0},
-    params
-  };
+  optimizer = Optimizer.SGD{lr => 1.0};
 
   for (epoch in Range(0, 1000)) {
-    trainer.step(data);
-    print_string(`Epoch #${epoch}\t  Loss: ${trainer.loss(eval)}\t (train loss: ${trainer.loss(data)})`)
+    avg_loss = 0.0;
+    for (d in data) {
+      (xi, yi) = d;
+      // xs = data.map(d -> { d.i0 });
+      // ys = data.map(d -> { d.i1 });
+      outputs = model.forward(Tensor.Input(xi));
+      loss = Loss.mse(outputs, Tensor.Input(yi));
+      grads = loss.backward(params);
+      optimizer.step(params, grads);
+      !avg_loss = avg_loss + loss.eval(params).array().scalar();
+    };
+    print_string(`Epoch #${epoch}\t  Loss: ${avg_loss / data.size().toFloat()}`);
   };
 }

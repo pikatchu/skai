@@ -76,7 +76,7 @@ class Int(value: .Int) extends Tensor {
   }
 }
 
-base class .Tensor uses Show {
+base class .Tensor {
   children =
   | Param(String)
   | Input(AF.Array)
@@ -253,7 +253,7 @@ base class .Tensor uses Show {
 
     Params(
       acc.map((_, g) -> {
-        g.eval(params)
+        g.eval(params).array()
       })
     )
   }
@@ -295,14 +295,29 @@ base class .Tensor uses Show {
     }
   }
 
-  fun eval(params: readonly Params = Params()): AF.Array {
-    awaitSynchronously(this.asyncEval(freeze(params.data)))
+  fun eval(params: readonly Params = Params()): Input {
+    Input(awaitSynchronously(this.asyncEval(freeze(params.data))))
   }
 
-  fun toString(): String
-  | Bind(name, _)
-  | Param(name) -> name
-  | _ -> invariant_violation("Unbound tensor.")
+  fun array(): AF.Array
+  | Input(arr) -> arr
+  | _ -> invariant_violation("Cannot extract array of symbolic tensor")
+}
+
+extension class Bind uses Show {
+  fun toString(): String {
+    this match {
+    | Bind(name, _) -> name
+    }
+  }
+}
+
+extension class Param uses Show {
+  fun toString(): String {
+    this match {
+    | Param(name) -> name
+    }
+  }
 }
 
 module end;
@@ -332,7 +347,7 @@ untracked fun testAll(): void {
     grads = y.backward(params);
     dx = grads["x"];
 
-    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(params)))
+    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(params).array()))
   })
   .test("test_multiply_add", t -> {
     x = Tensor.Param("x");
@@ -342,8 +357,8 @@ untracked fun testAll(): void {
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(params)) + y.eval(params));
-    t.expect_array_equal(dy, AF.mult_ia(2, y.eval(params)) + x.eval(params))
+    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(params).array()) + y.eval(params).array());
+    t.expect_array_equal(dy, AF.mult_ia(2, y.eval(params).array()) + x.eval(params).array())
   })
   .test("test_multiply_sub", t -> {
     x = Tensor.Param("x");
@@ -353,8 +368,8 @@ untracked fun testAll(): void {
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(params)) - y.eval(params));
-    t.expect_array_equal(dy, -x.eval(params))
+    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(params).array()) - y.eval(params).array());
+    t.expect_array_equal(dy, -x.eval(params).array())
   })
   .test("test_divide_add", t -> {
     x = Tensor.Param("x");
@@ -364,10 +379,10 @@ untracked fun testAll(): void {
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx, AF.plus_fa(1.0, AF.div_fa(1.0, y.eval(params))));
+    t.expect_array_equal(dx, AF.plus_fa(1.0, AF.div_fa(1.0, y.eval(params).array())));
     t.expect_array_equal(
       dy,
-      AF.minus_fa(1.0, (x.eval(params) / (y.eval(params) * y.eval(params)))),
+      AF.minus_fa(1.0, (x.eval(params).array() / (y.eval(params).array() * y.eval(params).array()))),
     )
   })
   .test("test_multiply_add_scalar", t -> {
@@ -378,8 +393,8 @@ untracked fun testAll(): void {
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx, AF.plus_fa(2.0, y.eval(params)));
-    t.expect_array_equal(dy, AF.plus_fa(1.0, x.eval(params)))
+    t.expect_array_equal(dx, AF.plus_fa(2.0, y.eval(params).array()));
+    t.expect_array_equal(dy, AF.plus_fa(1.0, x.eval(params).array()))
   })
   .test("test_bind", t -> {
     x = Tensor.Param("x");
@@ -390,8 +405,8 @@ untracked fun testAll(): void {
     dy = grads["y"];
     AF.print(grads["myVar"]);
 
-    t.expect_array_equal(dx, AF.Const(2.0) + y.eval(params));
-    t.expect_array_equal(dy, AF.Const(1.0) + x.eval(params))
+    t.expect_array_equal(dx, AF.Const(2.0) + y.eval(params).array());
+    t.expect_array_equal(dy, AF.Const(1.0) + x.eval(params).array())
   })
   .test("test_exp", t -> {
     x = Tensor.Param("x");
@@ -399,7 +414,7 @@ untracked fun testAll(): void {
     grads = y.backward(params);
     dx = grads["x"];
 
-    t.expect_array_equal(dx, AF.exp(x.eval(params)))
+    t.expect_array_equal(dx, AF.exp(x.eval(params).array()))
   })
   .test("test_sigmoid", t -> {
     x = Tensor.Param("x");
@@ -407,7 +422,7 @@ untracked fun testAll(): void {
     grads = y.backward(params);
     dx = grads["x"];
 
-    sigx = AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-x.eval(params))));
+    sigx = AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-x.eval(params).array())));
     t.expect_array_equal(dx, sigx * ((AF.minus_fa(1.0, sigx))));
 
     z = Tensor.Reciprocal(Tensor.Constant(1.0, 5) + Tensor.Exp(-x));
@@ -420,8 +435,8 @@ untracked fun testAll(): void {
     x = Tensor.Bind("x", Tensor.Constant(1.0, 5));
     y = x * x * x * x;
     grads = y.backward();
-    t.expect_array_equal(grads["x"], Tensor.Constant(4.0, 5).eval());
-    t.expect_array_equal(grads[x], Tensor.Constant(4.0, 5).eval())
+    t.expect_array_equal(grads["x"], Tensor.Constant(4.0, 5).eval().array());
+    t.expect_array_equal(grads[x], Tensor.Constant(4.0, 5).eval().array())
   }).run()
 }
 
