@@ -37,6 +37,18 @@ class Const(value: Float) {
   fun *(rhs: Array): Array {
     mult_fa(this.value, rhs)
   }
+
+  fun +(rhs: Array): Array {
+    plus_fa(this.value, rhs)
+  }
+
+  fun -(rhs: Array): Array {
+    minus_fa(this.value, rhs)
+  }
+
+  fun /(rhs: Array): Array {
+    div_fa(this.value, rhs)
+  }
 }
 
 // TODO: This assumes float arrays.

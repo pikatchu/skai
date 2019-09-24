@@ -27,11 +27,10 @@ untracked fun buildRnn(): void {
 
     loss = Loss.mse(h, yi);
 
-    grads = loss.backward(Tensor.Constant(1.0, 1));
+    grads = loss.backward(freeze(params.data));
 
-    rgrad = grads["R"].eval(freeze(params.data));
-    wgrad = grads["W"].eval(freeze(params.data));
-    params.data!["R"] = params.data["R"] + AF.mult_fa(lr, rgrad);
-    params.data!["W"] = params.data["W"] + AF.mult_fa(lr, wgrad);
+    params.data!["R"] = params.data["R"] + AF.Const(lr) * grads["R"];
+    params.data!["W"] = params.data["W"] + AF.Const(lr) * grads["W"];
+    AF.print(grads["R"]);
   };
 }

@@ -154,7 +154,6 @@ base class .Tensor {
       lhsDims
     }
 
-
   static fun addGradient(
     name: String,
     gradient: Tensor,
@@ -208,10 +207,18 @@ base class .Tensor {
     rhs.buildGradients(MatMul(Transpose(lhs), gradient), acc)
   | Transpose(tensor) -> tensor.buildGradients(Transpose(gradient), acc)
 
-  fun backward(gradient: Tensor): Map<String, Tensor> {
+  fun backward(
+    params: Env
+  ): Map<String, AF.Array> {
     acc = mutable Map[];
+    gradient = ConstantOfInt(1, this);
     this.buildGradients(gradient, acc);
-    freeze(acc)
+
+    res = acc.map((_, g) -> {
+      g.eval(params)
+    });
+
+    res
   }
 
   @gc
@@ -280,48 +287,44 @@ untracked fun testAll(): void {
   .test("multiply", t -> {
     x = Tensor.Param("x");
     y = x * x;
-    dy = Tensor.Constant(1.0, 5);
-    grads = y.backward(dy);
+    grads = y.backward(env);
     dx = grads["x"];
 
-    t.expect_array_equal(dx.eval(env), AF.mult_ia(2, x.eval(env)))
+    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(env)))
   })
   .test("test_multiply_add", t -> {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x * x + x * y + y * y;
-    dz = Tensor.Constant(1.0, 5);
-    grads = z.backward(dz);
+    grads = z.backward(env);
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx.eval(env), AF.mult_ia(2, x.eval(env)) + y.eval(env));
-    t.expect_array_equal(dy.eval(env), AF.mult_ia(2, y.eval(env)) + x.eval(env))
+    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(env)) + y.eval(env));
+    t.expect_array_equal(dy, AF.mult_ia(2, y.eval(env)) + x.eval(env))
   })
   .test("test_multiply_sub", t -> {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x * x - x * y;
-    dz = Tensor.Constant(1.0, 5);
-    grads = z.backward(dz);
+    grads = z.backward(env);
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx.eval(env), AF.mult_ia(2, x.eval(env)) - y.eval(env));
-    t.expect_array_equal(dy.eval(env), -x.eval(env))
+    t.expect_array_equal(dx, AF.mult_ia(2, x.eval(env)) - y.eval(env));
+    t.expect_array_equal(dy, -x.eval(env))
   })
   .test("test_divide_add", t -> {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x + x / y + y;
-    dz = Tensor.Constant(1.0, 5);
-    grads = z.backward(dz);
+    grads = z.backward(env);
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx.eval(env), AF.plus_fa(1.0, AF.div_fa(1.0, y.eval(env))));
+    t.expect_array_equal(dx, AF.plus_fa(1.0, AF.div_fa(1.0, y.eval(env))));
     t.expect_array_equal(
-      dy.eval(env),
+      dy,
       AF.minus_fa(1.0, (x.eval(env) / (y.eval(env) * y.eval(env)))),
     )
   })
@@ -329,52 +332,48 @@ untracked fun testAll(): void {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x * Tensor.Int(2) + x * y + y;
-    dz = Tensor.Constant(1.0, 5);
-    grads = z.backward(dz);
+    grads = z.backward(env);
     dx = grads["x"];
     dy = grads["y"];
 
-    t.expect_array_equal(dx.eval(env), AF.plus_fa(2.0, y.eval(env)));
-    t.expect_array_equal(dy.eval(env), AF.plus_fa(1.0, x.eval(env)))
+    t.expect_array_equal(dx, AF.plus_fa(2.0, y.eval(env)));
+    t.expect_array_equal(dy, AF.plus_fa(1.0, x.eval(env)))
   })
   .test("test_bind", t -> {
     x = Tensor.Param("x");
     y = Tensor.Param("y");
     z = x * Tensor.Int(2) + Tensor.Bind("myVar", x * y) + y;
-    dz = Tensor.Constant(1.0, 5);
-    grads = z.backward(dz);
+    grads = z.backward(env);
     dx = grads["x"];
     dy = grads["y"];
-    AF.print(grads["myVar"].eval(env));
+    AF.print(grads["myVar"]);
 
-    t.expect_array_equal(dx.eval(env), AF.plus_fa(2.0, y.eval(env)));
-    t.expect_array_equal(dy.eval(env), AF.plus_fa(1.0, x.eval(env)))
+    t.expect_array_equal(dx, AF.Const(2.0) + y.eval(env));
+    t.expect_array_equal(dy, AF.Const(1.0) + x.eval(env))
   })
   .test("test_exp", t -> {
     x = Tensor.Param("x");
     y = Tensor.Exp(x);
-    dy = Tensor.Constant(1.0, 5);
-    grads = y.backward(dy);
+    grads = y.backward(env);
     dx = grads["x"];
 
-    t.expect_array_equal(dx.eval(env), AF.exp(x.eval(env)))
+    t.expect_array_equal(dx, AF.exp(x.eval(env)))
   })
   .test("test_sigmoid", t -> {
     x = Tensor.Param("x");
     y = Tensor.Sigmoid(x);
-    dy = Tensor.Constant(1.0, 5);
-    grads = y.backward(dy);
+    grads = y.backward(env);
     dx = grads["x"];
 
     sigx = AF.div_fa(1.0, AF.plus_fa(1.0, AF.exp(-x.eval(env))));
-    t.expect_array_equal(dx.eval(env), sigx * ((AF.minus_fa(1.0, sigx))));
+    t.expect_array_equal(dx, sigx * ((AF.minus_fa(1.0, sigx))));
 
 
     z = Tensor.Reciprocal(Tensor.Constant(1.0, 5) + Tensor.Exp(-x));
-    grads2 = z.backward(dy);
+    grads2 = z.backward(env);
     dx2 = grads2["x"];
 
-    t.expect_array_equal(dx2.eval(env), sigx * ((AF.minus_fa(1.0, sigx))))
+    t.expect_array_equal(dx2, sigx * ((AF.minus_fa(1.0, sigx))))
   }).run()
 }
 

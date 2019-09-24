@@ -67,13 +67,13 @@ base class Optimizer {
     for (d in data) {
       (xi, yi) = d;
       loss = loss_fun(Tensor.Input(xi), Tensor.Input(yi));
-      grads = loss.backward(Tensor.Constant(1.0, 1));
       fenv = freeze(env.data);
+      grads = loss.backward(env.data);
       for ((k, w) in grads.items()) {
         if (all_grads.containsKey(k)) {
-          all_grads![k] = all_grads[k] + w.eval(fenv);
+          all_grads![k] = all_grads[k] + w;
         } else {
-          all_grads![k] = w.eval(fenv)
+          all_grads![k] = w
         }
       };
     };
