@@ -1,10 +1,15 @@
 {
-  "skipVersion": "1.0",
-  "programUnits": {
-    "a.out": {
-      "kind": "Program",
-      "sources": [".", "autograd/.", "tensor/.", "arrayfire/.", "codegen/.", "dasil/."],
-      "references": [{ "path": "/usr/lib/skip/prelude" }]
+    "skipVersion": "1.0",
+    "programUnits": {
+        "a.out": {
+            "kind": "Program",
+            "sources": [
+                "main.sk",
+                "tensor/.",
+                "arrayfire/.",
+                "experiment/."
+            ],
+            "references": [{ "path": "/usr/local/lib/skip/prelude" }]
+        }
     }
-  }
 }

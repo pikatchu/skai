@@ -1,0 +1,9 @@
+module Loss;
+
+fun mse(yiHat: Tensor, yi: Tensor): Tensor {
+  res = yiHat - yi;
+
+  Tensor.MatMul(Tensor.Transpose(res), res)
+}
+
+module end;

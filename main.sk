@@ -1,29 +1,5 @@
-fun invalid_usage<T>(): T {
-  print_error(`Invalid usage: expected number of programs a parameter`);
-  exit(2)
-}
-
-/*
 untracked fun main(): void {
-  args = arguments();
-  seed = if (args.size() == 0) {
-    invalid_usage()
-  } else {
-    args[0].toIntOption() match {
-    | None() -> invalid_usage()
-    | Some(x) -> x
-    }
-  };
-  typeEnv = (mutable CodeGen.GenTypes{
-    depth => 1,
-    maxWidth => 3,
-    maxHeight => 3,
-    maxTypes => 3,
-  }).genTypes();
-  codeGen = mutable CodeGen{typeEnv, randomGen => Random::mcreate(seed)};
-  program = codeGen.genProgram();
-  print_string(program.toString());
-  print_string("------------------ TRACE ------------------");
-  Eval::new(print_raw, program).go(22);
+  TestTensor.testAll();
+  //buildSimpleExample()
+  buildRnn();
 }
-*/

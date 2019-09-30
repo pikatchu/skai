@@ -1,0 +1,91 @@
+module alias AF = ArrayFire;
+module alias NN = SkaiModel;
+
+untracked fun makeMLP(dims: Vector<Int>, params: mutable Tensor.Params): NN.Model {
+  seq = mutable Vector<NN.Model>[];
+  for (i in Range(0, dims.size() - 1)) {
+    w_i = params.add(AF.randu(dims[i], dims[i+1]), `w_${i}`);
+
+    seq.push(NN.Linear(w_i));
+    seq.push(NN.Sigmoid());
+  };
+  NN.Seq(freeze(seq))
+}
+
+class Dataset(
+  data: Sequence<(Tensor.Input, Tensor.Input)>
+) {
+  static fun createFromItems(d: Sequence<(AF.Array, AF.Array)>): Dataset {
+    Dataset(
+      d.map(xy -> {
+        (Tensor.Input(xy.i0), Tensor.Input(xy.i1))
+      })
+    )
+  }
+
+  fun values(): mutable Iterator<(Tensor.Input, Tensor.Input)> {
+    this.data.values()
+  }
+
+  fun size(): Int {
+    this.data.size()
+  }
+
+  fun batch(k: Int): Dataset {
+    batches = mutable Vector[];
+
+    it = this.data.iterator();
+    loop {
+      batch_it = it.take(k);
+      debug(batch_it.next());
+      (xacc, yacc) = batch_it.next() match {
+      | Some((Tensor.Input(x), Tensor.Input(y))) -> (x, y)
+      | _ -> break { void }
+      };
+      batch_it.each(d -> {
+        (x, y) = d match {
+          (Tensor.Input(x), Tensor.Input(y)) -> (x, y)
+        };
+        !xacc = AF.join(1, xacc, x);
+        !yacc = AF.join(1, yacc, y);
+      });
+
+      batches.push((Tensor.Input(xacc), Tensor.Input(yacc)));
+      !it = it.drop(k);
+    };
+
+    Dataset(freeze(batches))
+  }
+}
+
+untracked fun buildSimpleExample(): void {
+  data = Dataset::createFromItems(
+    Range(0, 20).map(_ -> {
+      x = AF.randu(1);
+      (x, AF.sin(x))
+    })
+  ).batch(3);
+  _eval = Range(0,  5).map(_ -> { x = AF.randu(1); (x, AF.sin(x)) });
+
+  params = mutable Tensor.Params();
+  w_0 = params.add(AF.randu(1, 10));
+  w_1 = params.add(AF.randu(10, 1));
+  model = NN.Seq[NN.Linear(w_0),
+                 NN.Sigmoid(),
+                 NN.Linear(w_1),
+                 NN.Sigmoid()];
+
+  optimizer = Optimizer.SGD{lr => 1.0};
+
+  for (epoch in Range(0, 1000)) {
+    avg_loss = 0.0;
+    for ((xi, yi) in data) {
+      outputs = model.forward(xi);
+      loss = Loss.mse(outputs, yi);
+      grads = loss.backward(params);
+      optimizer.step(params, grads);
+      !avg_loss = avg_loss + loss.eval(params).scalar();
+    };
+    print_string(`Epoch #${epoch}\t  Loss: ${avg_loss / data.size().toFloat()}`);
+  };
+}

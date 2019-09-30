@@ -1,0 +1,36 @@
+module SkaiModel;
+
+base class Model {
+  fun forward(input: Tensor): Tensor;
+}
+
+class Linear(
+  weights: Tensor.Param,
+  // bias: Option<Tensor.Param> = None()
+) extends Model {
+  fun forward(input: Tensor): Tensor {
+    Tensor.MatMul(Tensor.Transpose(this.weights), input);
+  }
+}
+
+class Sigmoid() extends Model {
+  fun forward(input: Tensor): Tensor {
+    Tensor.Sigmoid(input)
+  }
+}
+
+class Seq(
+  layers: Sequence<Model>
+) extends Model {
+  fun forward(input: Tensor): Tensor {
+    acc = input;
+    this.layers.each(x -> !acc = x.forward(acc));
+    acc
+  }
+
+  static fun createFromItems(items: Sequence<Model>): Model {
+    Seq(items)
+  }
+}
+
+module end;

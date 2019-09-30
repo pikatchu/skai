@@ -1,0 +1,16 @@
+module alias AF = ArrayFire;
+
+module Optimizer;
+
+base class .Optimizer {
+  children =
+  | SGD{lr: Float}
+
+  untracked fun step(params: mutable Tensor.Params, grads: Tensor.Params): void
+  | SGD{lr} ->
+    for (k => w in grads) {
+      params![k] = params[k].array() - AF.Const(lr) * w.eval(freeze(params))
+    };
+}
+
+module end;

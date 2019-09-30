@@ -8,29 +8,67 @@ native class Type
 
 @cpp_extern
 native class Array {
-  fun -(lhs: Array): Array {
-    minus_aa(this, lhs)
+  fun -(rhs: Array): Array {
+    minus_aa(this, rhs)
   }
 
-  fun +(lhs: Array): Array {
-    plus_aa(this, lhs)
+  fun +(rhs: Array): Array {
+    plus_aa(this, rhs)
   }
 
-  fun /(lhs: Array): Array {
-    div_aa(this, lhs)
+  fun /(rhs: Array): Array {
+    div_aa(this, rhs)
   }
 
-  fun *(lhs: Array): Array {
-    mult_aa(this, lhs)
+  fun *(rhs: Array): Array {
+    mult_aa(this, rhs)
   }
 
   fun negate(): Array {
     negate(this)
   }
+
+  fun scalar(): Float {
+    scalar(this)
+  }
+
+  // static fun createFromItems(Sequence<Array>) {
+  //   // TODO: use specialized function for size <= 4.
+  // }
+}
+
+class Const(value: Float) {
+  fun *(rhs: Array): Array {
+    mult_fa(this.value, rhs)
+  }
+
+  fun +(rhs: Array): Array {
+    plus_fa(this.value, rhs)
+  }
+
+  fun -(rhs: Array): Array {
+    minus_fa(this.value, rhs)
+  }
+
+  fun /(rhs: Array): Array {
+    div_fa(this.value, rhs)
+  }
 }
 
 @cpp_extern
+native fun join(Int, Array, Array): Array;
+
+@cpp_extern
+native fun scalar(Array): Float;
+
+@cpp_extern
 native fun getType(Array): Type;
+
+@cpp_extern
+native fun numDims(Array): Int;
+
+@cpp_extern
+native fun getDim(Array, Int): Int;
 
 @cpp_extern
 native fun getDims(Array): Dims;
@@ -90,9 +128,27 @@ native fun constant_one(Array): Array;
 native fun print(Array): void;
 
 untracked @cpp_extern
-native fun randu(Int): Array;
+native fun randu(Int, Int = 0, Int = 0, Int = 0): Array;
 
 @cpp_extern
 native fun eval(Array): void;
+
+@cpp_extern
+native fun exp(Array): Array;
+
+@cpp_extern
+native fun sin(Array): Array;
+
+@cpp_extern
+native fun cos(Array): Array;
+
+@cpp_extern
+native fun tan(Array): Array;
+
+@cpp_extern
+native fun matmul(Array, Array): Array;
+
+@cpp_extern
+native fun transpose(Array): Array;
 
 module end;

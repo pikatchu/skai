@@ -1,0 +1,43 @@
+module alias AF = ArrayFire;
+
+untracked fun buildDataset(
+  n: Int,
+  d: Int,
+  seed: Int = 1337
+): Sequence<(Sequence<Tensor.Input>, Tensor.Input)> {
+  rand = Random::mcreate(seed);
+
+  Range(0, 100).map(_ -> {
+    l = rand.random(1, 12);
+    (
+      Range(0, l).map(_ -> { Tensor.Input(AF.randu(d)) }),
+      Tensor.Input(AF.randu(n))
+    )
+  })
+}
+
+untracked fun buildRnn(): void {
+  n = 10;
+  d = 4;
+
+  data = buildDataset(n, d);
+
+  params = mutable Tensor.Params();
+  r = params.add(AF.randu(n, n));
+  w = params.add(AF.randu(n, d));
+
+  optimizer = Optimizer.SGD{lr => 0.1};
+  for (di in data) {
+    (xis, yi) = di;
+    h: Tensor = Tensor.Constant(1.0, n);
+    for (xi in xis) {
+      !h = Tensor.MatMul(w, xi) + Tensor.MatMul(r, h)
+    };
+
+    loss = Loss.mse(h, yi);
+    grads = loss.backward(params);
+    optimizer.step(params, grads);
+
+    print_string(`loss: ${loss.eval(params).scalar()}`);
+  };
+}
