@@ -31,6 +31,10 @@ native class Array {
   fun scalar(): Float {
     scalar(this)
   }
+
+  // static fun createFromItems(Sequence<Array>) {
+  //   // TODO: use specialized function for size <= 4.
+  // }
 }
 
 class Const(value: Float) {
@@ -51,7 +55,9 @@ class Const(value: Float) {
   }
 }
 
-// TODO: This assumes float arrays.
+@cpp_extern
+native fun join(Int, Array, Array): Array;
+
 @cpp_extern
 native fun scalar(Array): Float;
 

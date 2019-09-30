@@ -225,4 +225,10 @@ extern "C" {
     return skip::Finalized<af::array>::createNew(skip::Obstack::cur(), arr);
   }
 
+  skip::RObj* SKIP_ArrayFire_join(long d, skip::RObj* obj1, skip::RObj* obj2) {
+    auto internal1 = static_cast<skip::Finalized<af::array>*>(obj1);
+    auto internal2 = static_cast<skip::Finalized<af::array>*>(obj2);
+    auto arr = af::join(d, internal1->m_cppClass, internal2->m_cppClass);
+    return skip::Finalized<af::array>::createNew(skip::Obstack::cur(), arr);
+  }
 }

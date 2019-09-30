@@ -1,20 +1,3 @@
-module alias AF = ArrayFire;
-
-module Optimizer;
-
-base class .Optimizer {
-  children =
-  | SGD{lr: Float}
-
-  untracked fun step(params: mutable Tensor.Params, grads: Tensor.Params): void
-  | SGD{lr} ->
-    for ((k, w) in grads.items()) {
-      params![k] = params[k] - AF.Const(lr) * w
-    };
-}
-
-module end;
-
 module Skai;
 
 mutable class Trainer {

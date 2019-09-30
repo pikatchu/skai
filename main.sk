@@ -1,5 +1,5 @@
 untracked fun main(): void {
-  //TestTensor.testAll()
+  TestTensor.testAll();
   //buildSimpleExample()
   buildRnn();
 }
